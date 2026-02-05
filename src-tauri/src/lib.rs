@@ -11,6 +11,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::feeds::add_feed,
             commands::feeds::remove_feed,
@@ -21,13 +23,17 @@ pub fn run() {
             commands::articles::get_article,
             commands::articles::toggle_read,
             commands::articles::mark_all_read,
+            commands::articles::mark_all_unread,
             commands::articles::toggle_favorite,
+            commands::articles::get_favorites_count,
+            commands::feeds::import_opml,
             commands::articles::search_articles,
-            commands::tags::get_tags,
-            commands::tags::create_tag,
-            commands::tags::tag_feed,
-            commands::tags::untag_feed,
-            commands::tags::delete_tag,
+            commands::articles::fetch_article_content,
+            commands::folders::get_folders,
+            commands::folders::create_folder,
+            commands::folders::rename_folder,
+            commands::folders::delete_folder,
+            commands::folders::move_feed_to_folder,
         ])
         .setup(|app| {
             // Database

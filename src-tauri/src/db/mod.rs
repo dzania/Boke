@@ -5,6 +5,7 @@ const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS feeds (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     title           TEXT NOT NULL,
+    folder_id       INTEGER REFERENCES folders(id) ON DELETE SET NULL,
     feed_url        TEXT NOT NULL UNIQUE,
     site_url        TEXT,
     description     TEXT,
@@ -16,15 +17,9 @@ CREATE TABLE IF NOT EXISTS feeds (
     updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS tags (
+CREATE TABLE IF NOT EXISTS folders (
     id   INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE
-);
-
-CREATE TABLE IF NOT EXISTS feed_tags (
-    feed_id INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
-    tag_id  INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-    PRIMARY KEY (feed_id, tag_id)
 );
 
 CREATE TABLE IF NOT EXISTS articles (

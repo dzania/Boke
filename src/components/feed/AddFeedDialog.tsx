@@ -1,16 +1,19 @@
 import { useState } from "react";
-import { useAddFeed } from "../../api/feeds";
+import { open } from "@tauri-apps/plugin-dialog";
+import { useAddFeed, useImportOpml } from "../../api/feeds";
 
 interface AddFeedDialogProps {
   open: boolean;
   onClose: () => void;
 }
 
-export default function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
+export default function AddFeedDialog({ open: isOpen, onClose }: AddFeedDialogProps) {
   const [url, setUrl] = useState("");
+  const [importStatus, setImportStatus] = useState<string | null>(null);
   const addFeed = useAddFeed();
+  const importOpml = useImportOpml();
 
-  if (!open) return null;
+  if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,6 +25,27 @@ export default function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
       },
     });
   };
+
+  const handleImportOpml = async () => {
+    const file = await open({
+      multiple: false,
+      filters: [{ name: "OPML", extensions: ["opml", "xml"] }],
+    });
+    if (!file) return;
+
+    setImportStatus(null);
+    importOpml.mutate(file, {
+      onSuccess: (result) => {
+        const parts: string[] = [];
+        if (result.added > 0) parts.push(`${result.added} feeds added`);
+        if (result.skipped > 0) parts.push(`${result.skipped} already subscribed`);
+        if (result.errors.length > 0) parts.push(`${result.errors.length} failed`);
+        setImportStatus(parts.join(", "));
+      },
+    });
+  };
+
+  const busy = addFeed.isPending || importOpml.isPending;
 
   return (
     <div
@@ -67,7 +91,7 @@ export default function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
             </button>
             <button
               type="submit"
-              disabled={addFeed.isPending || !url.trim()}
+              disabled={busy || !url.trim()}
               className="px-3 py-1.5 rounded-md text-sm font-medium text-white disabled:opacity-50"
               style={{ backgroundColor: "var(--color-accent)" }}
             >
@@ -75,6 +99,43 @@ export default function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
             </button>
           </div>
         </form>
+
+        {/* Divider */}
+        <div className="flex items-center gap-3 my-4">
+          <div className="flex-1 h-px" style={{ backgroundColor: "var(--color-border)" }} />
+          <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>or</span>
+          <div className="flex-1 h-px" style={{ backgroundColor: "var(--color-border)" }} />
+        </div>
+
+        {/* Import OPML */}
+        <button
+          type="button"
+          disabled={busy}
+          onClick={handleImportOpml}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm transition-opacity hover:opacity-80 disabled:opacity-50"
+          style={{
+            backgroundColor: "var(--color-bg-secondary)",
+            color: "var(--color-text-primary)",
+            border: "1px solid var(--color-border)",
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M8 10V2M8 2L5 5M8 2l3 3" />
+            <path d="M2 10v3a1 1 0 001 1h10a1 1 0 001-1v-3" />
+          </svg>
+          {importOpml.isPending ? "Importing..." : "Import OPML file"}
+        </button>
+
+        {importOpml.isError && (
+          <p className="text-red-500 text-xs mt-2">
+            {importOpml.error instanceof Error ? importOpml.error.message : String(importOpml.error)}
+          </p>
+        )}
+        {importStatus && (
+          <p className="text-xs mt-2" style={{ color: "var(--color-text-secondary)" }}>
+            {importStatus}
+          </p>
+        )}
       </div>
     </div>
   );

@@ -31,6 +31,7 @@ export interface FeedWithMeta {
   description: string | null;
   language: string | null;
   favicon_url: string | null;
+  folder_id: number | null;
   last_fetched_at: string | null;
   last_build_date: string | null;
   created_at: string;
@@ -55,15 +56,10 @@ export interface Article {
   feed_title: string | null;
 }
 
-export interface Tag {
+export interface Folder {
   id: number;
   name: string;
-  feed_ids: number[];
-}
-
-export interface FeedTag {
-  feed_id: number;
-  tag_id: number;
+  feed_count: number;
 }
 
 export interface RefreshResult {

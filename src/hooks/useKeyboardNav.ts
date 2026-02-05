@@ -20,6 +20,7 @@ interface KeyboardNavConfig {
   onMarkAllRead: () => void;
   onOpenAddFeed: () => void;
   onOpenSearch: () => void;
+  onToggleArticleList: () => void;
 }
 
 export function useKeyboardNav(config: KeyboardNavConfig) {
@@ -29,7 +30,7 @@ export function useKeyboardNav(config: KeyboardNavConfig) {
     onSelectArticle, onClearArticle, onSelectFeed,
     onToggleRead, onToggleFavorite, onOpenInBrowser,
     onRefreshFeed, onRefreshAll, onMarkAllRead,
-    onOpenAddFeed, onOpenSearch,
+    onOpenAddFeed, onToggleArticleList,
   } = config;
 
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -45,17 +46,23 @@ export function useKeyboardNav(config: KeyboardNavConfig) {
     [articles.length],
   );
 
-  // j / ArrowDown — next article
+  // j / ArrowDown — next article in list, or scroll reader down
   useHotkeys("j, ArrowDown", () => {
-    if (inReader) return;
-    setSelectedIndex((i) => clampIndex(i + 1));
-  }, opts, [clampIndex, inReader]);
+    if (inReader) {
+      readerRef.current?.scrollBy({ top: 100, behavior: "smooth" });
+    } else {
+      setSelectedIndex((i) => clampIndex(i + 1));
+    }
+  }, opts, [clampIndex, inReader, readerRef]);
 
-  // k / ArrowUp — previous article
+  // k / ArrowUp — previous article in list, or scroll reader up
   useHotkeys("k, ArrowUp", () => {
-    if (inReader) return;
-    setSelectedIndex((i) => clampIndex(i - 1));
-  }, opts, [clampIndex, inReader]);
+    if (inReader) {
+      readerRef.current?.scrollBy({ top: -100, behavior: "smooth" });
+    } else {
+      setSelectedIndex((i) => clampIndex(i - 1));
+    }
+  }, opts, [clampIndex, inReader, readerRef]);
 
   // Enter / o — open selected article
   useHotkeys("enter, o", () => {
@@ -73,14 +80,13 @@ export function useKeyboardNav(config: KeyboardNavConfig) {
     }
   }, { enabled: !disabled, preventDefault: true }, [inReader, showShortcuts, onClearArticle]);
 
-  // J — scroll reader down
+  // J / K — also scroll reader (shift variants)
   useHotkeys("shift+j", () => {
-    readerRef.current?.scrollBy({ top: 100, behavior: "smooth" });
+    readerRef.current?.scrollBy({ top: 200, behavior: "smooth" });
   }, { ...opts, enabled: opts.enabled && inReader }, [inReader, readerRef]);
 
-  // K — scroll reader up
   useHotkeys("shift+k", () => {
-    readerRef.current?.scrollBy({ top: -100, behavior: "smooth" });
+    readerRef.current?.scrollBy({ top: -200, behavior: "smooth" });
   }, { ...opts, enabled: opts.enabled && inReader }, [inReader, readerRef]);
 
   // Space — page down in reader
@@ -152,10 +158,11 @@ export function useKeyboardNav(config: KeyboardNavConfig) {
     onOpenAddFeed();
   }, opts, [inReader, onOpenAddFeed]);
 
-  // / — open search (handled in App.tsx already, but adding here for completeness)
-  useHotkeys("/", () => {
-    onOpenSearch();
-  }, opts, [onOpenSearch]);
+  // b — toggle article list panel
+  useHotkeys("b", () => {
+    if (inReader) return;
+    onToggleArticleList();
+  }, opts, [inReader, onToggleArticleList]);
 
   // ? — toggle shortcuts overlay
   useHotkeys("shift+/", () => {

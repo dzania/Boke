@@ -16,7 +16,8 @@
         "width": 1200,
         "height": 800,
         "minWidth": 800,
-        "minHeight": 600
+        "minHeight": 600,
+        "dragDropEnabled": false
       }
     ],
     "security": {
@@ -32,6 +33,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [
+        "https://github.com/OWNER/boke/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

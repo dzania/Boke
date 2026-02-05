@@ -18,6 +18,17 @@ export function useAddFeed() {
   });
 }
 
+export function useImportOpml() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (path: string) => api.importOpml(path),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["feeds"] });
+      queryClient.invalidateQueries({ queryKey: ["articles"] });
+    },
+  });
+}
+
 export function useRemoveFeed() {
   const queryClient = useQueryClient();
   return useMutation({
