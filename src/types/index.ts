@@ -58,6 +58,7 @@ export interface Article {
 export interface Tag {
   id: number;
   name: string;
+  feed_ids: number[];
 }
 
 export interface FeedTag {

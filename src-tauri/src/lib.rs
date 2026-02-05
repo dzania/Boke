@@ -21,6 +21,11 @@ pub fn run() {
             commands::articles::mark_all_read,
             commands::articles::toggle_favorite,
             commands::articles::search_articles,
+            commands::tags::get_tags,
+            commands::tags::create_tag,
+            commands::tags::tag_feed,
+            commands::tags::untag_feed,
+            commands::tags::delete_tag,
         ])
         .setup(|app| {
             let app_dir = app

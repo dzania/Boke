@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useFeeds, useRefreshAllFeeds } from "../../api/feeds";
+import { useTags } from "../../api/tags";
 import { useArticles } from "../../api/articles";
 import AddFeedDialog from "../feed/AddFeedDialog";
-import type { Article } from "../../types";
+import TagManager from "../tags/TagManager";
+import TagBadge from "../tags/TagBadge";
+import type { Article, FeedWithMeta } from "../../types";
 
 interface SidebarProps {
   activeFeedId: number | null;
@@ -13,11 +16,80 @@ interface SidebarProps {
 
 export default function Sidebar({ activeFeedId, onSelectFeed, selectedArticleId, onSelectArticle }: SidebarProps) {
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [tagManagerFeed, setTagManagerFeed] = useState<FeedWithMeta | null>(null);
+  const [activeTagFilter, setActiveTagFilter] = useState<number | null>(null);
   const { data: feeds } = useFeeds();
+  const { data: tags } = useTags();
   const refreshAll = useRefreshAllFeeds();
   const { data: articles } = useArticles(activeFeedId);
 
   const totalUnread = feeds?.reduce((sum, f) => sum + f.unread_count, 0) ?? 0;
+
+  // Group feeds by tag for display
+  const { taggedGroups, untaggedFeeds } = useMemo(() => {
+    if (!feeds || !tags) return { taggedGroups: [], untaggedFeeds: feeds ?? [] };
+
+    const taggedFeedIds = new Set(tags.flatMap((t) => t.feed_ids));
+    const untagged = feeds.filter((f) => !taggedFeedIds.has(f.id));
+    const groups = tags
+      .filter((t) => t.feed_ids.length > 0)
+      .map((tag) => ({
+        tag,
+        feeds: feeds.filter((f) => tag.feed_ids.includes(f.id)),
+      }));
+
+    return { taggedGroups: groups, untaggedFeeds: untagged };
+  }, [feeds, tags]);
+
+  // Filter feeds when a tag is selected
+  const visibleFeeds = useMemo(() => {
+    if (!activeTagFilter || !feeds || !tags) return feeds ?? [];
+    const tag = tags.find((t) => t.id === activeTagFilter);
+    if (!tag) return feeds ?? [];
+    return feeds.filter((f) => tag.feed_ids.includes(f.id));
+  }, [feeds, tags, activeTagFilter]);
+
+  const renderFeedButton = (feed: FeedWithMeta) => (
+    <button
+      key={feed.id}
+      type="button"
+      className="w-full flex items-center justify-between px-3 py-1.5 rounded-md text-sm transition-colors mt-0.5 group"
+      style={{
+        backgroundColor: activeFeedId === feed.id ? "var(--color-bg-secondary)" : "transparent",
+        color: "var(--color-text-primary)",
+      }}
+      onClick={() => onSelectFeed(feed.id)}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setTagManagerFeed(feed);
+      }}
+    >
+      <span className="truncate mr-2">{feed.title}</span>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          aria-label="Manage tags"
+          className="p-0.5 rounded opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity"
+          style={{ color: "var(--color-text-muted)" }}
+          title="Manage tags"
+          onClick={(e) => {
+            e.stopPropagation();
+            setTagManagerFeed(feed);
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M1 9l7-7h6v6l-7 7z" />
+            <circle cx="11.5" cy="4.5" r="1" fill="currentColor" stroke="none" />
+          </svg>
+        </button>
+        {feed.unread_count > 0 && (
+          <span className="text-xs shrink-0" style={{ color: "var(--color-text-muted)" }}>
+            {feed.unread_count}
+          </span>
+        )}
+      </div>
+    </button>
+  );
 
   return (
     <aside
@@ -70,14 +142,15 @@ export default function Sidebar({ activeFeedId, onSelectFeed, selectedArticleId,
 
       {/* Feed List */}
       <div className="px-2 py-2 shrink-0 overflow-y-auto" style={{ maxHeight: "40%" }}>
+        {/* All Feeds */}
         <button
           type="button"
           className="w-full flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors"
           style={{
-            backgroundColor: activeFeedId === null ? "var(--color-bg-secondary)" : "transparent",
+            backgroundColor: activeFeedId === null && activeTagFilter === null ? "var(--color-bg-secondary)" : "transparent",
             color: "var(--color-text-primary)",
           }}
-          onClick={() => onSelectFeed(null)}
+          onClick={() => { onSelectFeed(null); setActiveTagFilter(null); }}
         >
           <span className="font-medium">All Feeds</span>
           {totalUnread > 0 && (
@@ -87,25 +160,50 @@ export default function Sidebar({ activeFeedId, onSelectFeed, selectedArticleId,
           )}
         </button>
 
-        {feeds?.map((feed) => (
-          <button
-            key={feed.id}
-            type="button"
-            className="w-full flex items-center justify-between px-3 py-1.5 rounded-md text-sm transition-colors mt-0.5"
-            style={{
-              backgroundColor: activeFeedId === feed.id ? "var(--color-bg-secondary)" : "transparent",
-              color: "var(--color-text-primary)",
-            }}
-            onClick={() => onSelectFeed(feed.id)}
-          >
-            <span className="truncate mr-2">{feed.title}</span>
-            {feed.unread_count > 0 && (
-              <span className="text-xs shrink-0" style={{ color: "var(--color-text-muted)" }}>
-                {feed.unread_count}
-              </span>
+        {/* Tag filter chips */}
+        {tags && tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 px-2 mt-1.5 mb-1">
+            {tags.map((tag) => (
+              <TagBadge
+                key={tag.id}
+                name={tag.name}
+                onClick={() => {
+                  setActiveTagFilter(activeTagFilter === tag.id ? null : tag.id);
+                  onSelectFeed(null);
+                }}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Feeds - grouped by tag or filtered */}
+        {activeTagFilter ? (
+          // Filtered view: show only feeds matching the selected tag
+          visibleFeeds.map(renderFeedButton)
+        ) : taggedGroups.length > 0 ? (
+          // Grouped view: show feeds organized by tags
+          <>
+            {taggedGroups.map(({ tag, feeds: groupFeeds }) => (
+              <div key={tag.id} className="mt-2">
+                <p className="px-3 py-1 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+                  {tag.name}
+                </p>
+                {groupFeeds.map(renderFeedButton)}
+              </div>
+            ))}
+            {untaggedFeeds.length > 0 && (
+              <div className="mt-2">
+                <p className="px-3 py-1 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+                  Untagged
+                </p>
+                {untaggedFeeds.map(renderFeedButton)}
+              </div>
             )}
-          </button>
-        ))}
+          </>
+        ) : (
+          // No tags exist: flat list
+          feeds?.map(renderFeedButton)
+        )}
 
         {(!feeds || feeds.length === 0) && (
           <div className="text-center py-4" style={{ color: "var(--color-text-muted)" }}>
@@ -167,6 +265,9 @@ export default function Sidebar({ activeFeedId, onSelectFeed, selectedArticleId,
       </div>
 
       <AddFeedDialog open={showAddDialog} onClose={() => setShowAddDialog(false)} />
+      {tagManagerFeed && (
+        <TagManager feed={tagManagerFeed} open={true} onClose={() => setTagManagerFeed(null)} />
+      )}
     </aside>
   );
 }
