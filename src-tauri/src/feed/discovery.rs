@@ -6,8 +6,6 @@ use super::error::FeedError;
 #[derive(Debug, Clone)]
 pub struct DiscoveredFeed {
     pub url: String,
-    pub title: Option<String>,
-    pub feed_type: String,
 }
 
 const COMMON_FEED_PATHS: &[&str] = &[
@@ -44,15 +42,8 @@ pub async fn discover(url: &str) -> Result<Vec<DiscoveredFeed>, FeedError> {
 
     // If the URL is already a feed (XML/RSS/Atom content type)
     if is_feed_content_type(&content_type) || looks_like_feed(&body) {
-        let feed_type = if content_type.contains("atom") {
-            "atom"
-        } else {
-            "rss"
-        };
         return Ok(vec![DiscoveredFeed {
             url: url.to_string(),
-            title: None,
-            feed_type: feed_type.to_string(),
         }]);
     }
 
@@ -68,21 +59,13 @@ pub async fn discover(url: &str) -> Result<Vec<DiscoveredFeed>, FeedError> {
         for element in document.select(&selector) {
             let link_type = element.value().attr("type").unwrap_or("");
             let href = element.value().attr("href").unwrap_or("");
-            let title = element.value().attr("title").map(String::from);
 
             if (link_type.contains("rss") || link_type.contains("atom") || link_type.contains("feed"))
                 && !href.is_empty()
             {
                 let resolved = resolve_url(&base_url, href);
-                let feed_type = if link_type.contains("atom") {
-                    "atom"
-                } else {
-                    "rss"
-                };
                 found.push(DiscoveredFeed {
                     url: resolved,
-                    title,
-                    feed_type: feed_type.to_string(),
                 });
             }
         }
@@ -107,8 +90,6 @@ pub async fn discover(url: &str) -> Result<Vec<DiscoveredFeed>, FeedError> {
                 if is_feed_content_type(&ct) {
                     feeds.push(DiscoveredFeed {
                         url: candidate,
-                        title: None,
-                        feed_type: "rss".to_string(),
                     });
                     return Ok(feeds);
                 }
