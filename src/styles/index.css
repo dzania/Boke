@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+:root {
+    --color-bg-primary: #ffffff;
+    --color-bg-secondary: #f9fafb;
+    --color-bg-sidebar: #f3f4f6;
+    --color-text-primary: #111827;
+    --color-text-secondary: #6b7280;
+    --color-text-muted: #9ca3af;
+    --color-accent: #3b82f6;
+    --color-border: #e5e7eb;
+    --color-unread-dot: #3b82f6;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --color-bg-primary: #0f0f0f;
+        --color-bg-secondary: #171717;
+        --color-bg-sidebar: #141414;
+        --color-text-primary: #f5f5f5;
+        --color-text-secondary: #a3a3a3;
+        --color-text-muted: #737373;
+        --color-accent: #60a5fa;
+        --color-border: #262626;
+        --color-unread-dot: #60a5fa;
+    }
+}
+
+/* Global resets */
+html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font-family: 'Inter', 'SF Pro Text', -apple-system, system-ui, sans-serif;
+}
+
+/* Reader mode article typography */
+.reader-content {
+    max-width: 680px;
+    margin-left: auto;
+    margin-right: auto;
+    font-size: 16px;
+    line-height: 1.75;
+    letter-spacing: -0.01em;
+    color: var(--color-text-primary);
+}
+
+.reader-content h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+}
+
+.reader-content h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.reader-content h3 {
+    font-size: 1.125rem;
+    font-weight: 500;
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.reader-content p {
+    margin-bottom: 1rem;
+}
+
+.reader-content img {
+    border-radius: 0.5rem;
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+    max-width: 100%;
+    height: auto;
+}
+
+.reader-content blockquote {
+    border-left: 2px solid var(--color-accent);
+    padding-left: 1rem;
+    font-style: italic;
+    color: var(--color-text-secondary);
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+}
+
+.reader-content pre {
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+    overflow-x: auto;
+    font-size: 0.875rem;
+    background-color: var(--color-bg-secondary);
+}
+
+.reader-content a {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+
+.reader-content a:hover {
+    text-decoration-thickness: 2px;
+}
