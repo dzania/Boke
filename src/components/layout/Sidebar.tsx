@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { useFeeds, useRefreshAllFeeds } from "../../api/feeds";
 import { useTags } from "../../api/tags";
-import { useArticles } from "../../api/articles";
 import AddFeedDialog from "../feed/AddFeedDialog";
 import TagManager from "../tags/TagManager";
 import TagBadge from "../tags/TagBadge";
@@ -11,17 +10,24 @@ interface SidebarProps {
   activeFeedId: number | null;
   onSelectFeed: (feedId: number | null) => void;
   selectedArticleId: number | null;
+  selectedIndex: number;
   onSelectArticle: (article: Article) => void;
+  articles: Article[];
+  showAddFeed: boolean;
+  onOpenAddFeed: () => void;
+  onCloseAddFeed: () => void;
 }
 
-export default function Sidebar({ activeFeedId, onSelectFeed, selectedArticleId, onSelectArticle }: SidebarProps) {
-  const [showAddDialog, setShowAddDialog] = useState(false);
+export default function Sidebar({
+  activeFeedId, onSelectFeed,
+  selectedArticleId, selectedIndex, onSelectArticle,
+  articles, showAddFeed, onOpenAddFeed, onCloseAddFeed,
+}: SidebarProps) {
   const [tagManagerFeed, setTagManagerFeed] = useState<FeedWithMeta | null>(null);
   const [activeTagFilter, setActiveTagFilter] = useState<number | null>(null);
   const { data: feeds } = useFeeds();
   const { data: tags } = useTags();
   const refreshAll = useRefreshAllFeeds();
-  const { data: articles } = useArticles(activeFeedId);
 
   const totalUnread = feeds?.reduce((sum, f) => sum + f.unread_count, 0) ?? 0;
 
@@ -131,7 +137,7 @@ export default function Sidebar({ activeFeedId, onSelectFeed, selectedArticleId,
             className="p-1.5 rounded-md hover:opacity-80 transition-opacity"
             style={{ color: "var(--color-text-secondary)" }}
             title="Add feed"
-            onClick={() => setShowAddDialog(true)}
+            onClick={onOpenAddFeed}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M8 3v10M3 8h10" />
@@ -178,10 +184,8 @@ export default function Sidebar({ activeFeedId, onSelectFeed, selectedArticleId,
 
         {/* Feeds - grouped by tag or filtered */}
         {activeTagFilter ? (
-          // Filtered view: show only feeds matching the selected tag
           visibleFeeds.map(renderFeedButton)
         ) : taggedGroups.length > 0 ? (
-          // Grouped view: show feeds organized by tags
           <>
             {taggedGroups.map(({ tag, feeds: groupFeeds }) => (
               <div key={tag.id} className="mt-2">
@@ -201,7 +205,6 @@ export default function Sidebar({ activeFeedId, onSelectFeed, selectedArticleId,
             )}
           </>
         ) : (
-          // No tags exist: flat list
           feeds?.map(renderFeedButton)
         )}
 
@@ -218,15 +221,23 @@ export default function Sidebar({ activeFeedId, onSelectFeed, selectedArticleId,
         className="flex-1 overflow-y-auto border-t"
         style={{ borderColor: "var(--color-border)" }}
       >
-        {articles && articles.length > 0 ? (
-          articles.map((article) => (
+        {articles.length > 0 ? (
+          articles.map((article, i) => (
             <button
               key={article.id}
               type="button"
               className="w-full text-left px-4 py-3 border-b transition-colors"
               style={{
                 borderColor: "var(--color-border)",
-                backgroundColor: selectedArticleId === article.id ? "var(--color-bg-secondary)" : "transparent",
+                backgroundColor:
+                  selectedArticleId === article.id
+                    ? "var(--color-bg-secondary)"
+                    : i === selectedIndex
+                      ? "var(--color-bg-secondary)"
+                      : "transparent",
+                borderLeft: i === selectedIndex && selectedArticleId !== article.id
+                  ? "2px solid var(--color-accent)"
+                  : "2px solid transparent",
               }}
               onClick={() => onSelectArticle(article)}
             >
@@ -264,7 +275,7 @@ export default function Sidebar({ activeFeedId, onSelectFeed, selectedArticleId,
         )}
       </div>
 
-      <AddFeedDialog open={showAddDialog} onClose={() => setShowAddDialog(false)} />
+      <AddFeedDialog open={showAddFeed} onClose={onCloseAddFeed} />
       {tagManagerFeed && (
         <TagManager feed={tagManagerFeed} open={true} onClose={() => setTagManagerFeed(null)} />
       )}

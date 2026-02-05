@@ -4,12 +4,14 @@ import type { Article } from "../../types";
 
 interface ReaderPaneProps {
   article: Article | null;
+  readerRef: React.RefObject<HTMLElement | null>;
 }
 
-export default function ReaderPane({ article }: ReaderPaneProps) {
+export default function ReaderPane({ article, readerRef }: ReaderPaneProps) {
   if (!article) {
     return (
       <main
+        ref={readerRef}
         className="flex-1 h-full overflow-y-auto"
         style={{ backgroundColor: "var(--color-bg-primary)" }}
       >
@@ -28,6 +30,7 @@ export default function ReaderPane({ article }: ReaderPaneProps) {
 
   return (
     <main
+      ref={readerRef}
       className="flex-1 h-full overflow-y-auto"
       style={{ backgroundColor: "var(--color-bg-primary)" }}
     >

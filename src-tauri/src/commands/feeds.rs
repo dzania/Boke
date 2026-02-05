@@ -1,6 +1,6 @@
 use serde::Serialize;
 use sqlx::SqlitePool;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::feed;
 
@@ -183,7 +183,7 @@ pub async fn refresh_feed(feed_id: i64, pool: State<'_, SqlitePool>) -> Result<R
 }
 
 #[tauri::command]
-pub async fn refresh_all_feeds(pool: State<'_, SqlitePool>) -> Result<Vec<RefreshResult>, String> {
+pub async fn refresh_all_feeds(pool: State<'_, SqlitePool>, app: AppHandle) -> Result<Vec<RefreshResult>, String> {
     let rows: Vec<(i64, String)> =
         sqlx::query_as("SELECT id, feed_url FROM feeds")
             .fetch_all(pool.inner())
@@ -217,6 +217,17 @@ pub async fn refresh_all_feeds(pool: State<'_, SqlitePool>) -> Result<Vec<Refres
             results.push(r);
         }
     }
+
+    // Emit event for notifications
+    let total_new: i64 = results.iter().map(|r| r.new_articles).sum();
+    let feeds_with_new = results.iter().filter(|r| r.new_articles > 0).count();
+    if total_new > 0 {
+        let _ = app.emit(
+            "new-articles",
+            serde_json::json!({ "total": total_new, "feeds": feeds_with_new }),
+        );
+    }
+
     Ok(results)
 }
 

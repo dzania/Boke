@@ -2,7 +2,9 @@ mod commands;
 mod db;
 mod feed;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::TrayIconBuilder;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -28,6 +30,7 @@ pub fn run() {
             commands::tags::delete_tag,
         ])
         .setup(|app| {
+            // Database
             let app_dir = app
                 .path()
                 .app_data_dir()
@@ -38,6 +41,53 @@ pub fn run() {
             let pool = tauri::async_runtime::block_on(db::init(&db_path))
                 .expect("failed to initialize database");
             app.manage(pool);
+
+            // System tray
+            let refresh_item = MenuItemBuilder::with_id("refresh", "Refresh All").build(app)?;
+            let open_item = MenuItemBuilder::with_id("open", "Open Boke").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+
+            let menu = MenuBuilder::new(app)
+                .items(&[&refresh_item, &open_item, &quit_item])
+                .build()?;
+
+            TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .tooltip("Boke RSS Reader")
+                .menu(&menu)
+                .on_menu_event(|app, event| {
+                    match event.id().as_ref() {
+                        "refresh" => {
+                            // Emit event to frontend to trigger refresh
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.emit("tray-refresh", ());
+                            }
+                        }
+                        "open" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "quit" => app.exit(0),
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let tauri::tray::TrayIconEvent::Click {
+                        button: tauri::tray::MouseButton::Left,
+                        button_state: tauri::tray::MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
 
             Ok(())
         })
