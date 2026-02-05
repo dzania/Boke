@@ -52,6 +52,7 @@ export interface Article {
   is_read: boolean;
   is_favorite: boolean;
   created_at: string;
+  feed_title: string | null;
 }
 
 export interface Tag {

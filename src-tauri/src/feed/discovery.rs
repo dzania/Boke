@@ -57,34 +57,37 @@ pub async fn discover(url: &str) -> Result<Vec<DiscoveredFeed>, FeedError> {
     }
 
     // Parse as HTML and look for feed links
-    let mut feeds = Vec::new();
     let base_url = Url::parse(url).map_err(|e| FeedError::Discovery(e.to_string()))?;
 
-    // Look for <link rel="alternate" type="application/rss+xml|atom+xml" href="...">
-    let document = Html::parse_document(&body);
-    let selector = Selector::parse(r#"link[rel="alternate"]"#).unwrap();
+    // Scope the HTML parsing so `document` (not Send) is dropped before any await
+    let mut feeds = {
+        let document = Html::parse_document(&body);
+        let selector = Selector::parse(r#"link[rel="alternate"]"#).unwrap();
+        let mut found = Vec::new();
 
-    for element in document.select(&selector) {
-        let link_type = element.value().attr("type").unwrap_or("");
-        let href = element.value().attr("href").unwrap_or("");
-        let title = element.value().attr("title").map(String::from);
+        for element in document.select(&selector) {
+            let link_type = element.value().attr("type").unwrap_or("");
+            let href = element.value().attr("href").unwrap_or("");
+            let title = element.value().attr("title").map(String::from);
 
-        if (link_type.contains("rss") || link_type.contains("atom") || link_type.contains("feed"))
-            && !href.is_empty()
-        {
-            let resolved = resolve_url(&base_url, href);
-            let feed_type = if link_type.contains("atom") {
-                "atom"
-            } else {
-                "rss"
-            };
-            feeds.push(DiscoveredFeed {
-                url: resolved,
-                title,
-                feed_type: feed_type.to_string(),
-            });
+            if (link_type.contains("rss") || link_type.contains("atom") || link_type.contains("feed"))
+                && !href.is_empty()
+            {
+                let resolved = resolve_url(&base_url, href);
+                let feed_type = if link_type.contains("atom") {
+                    "atom"
+                } else {
+                    "rss"
+                };
+                found.push(DiscoveredFeed {
+                    url: resolved,
+                    title,
+                    feed_type: feed_type.to_string(),
+                });
+            }
         }
-    }
+        found
+    };
 
     if !feeds.is_empty() {
         return Ok(feeds);

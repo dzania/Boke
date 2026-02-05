@@ -1,0 +1,81 @@
+import { useState } from "react";
+import { useAddFeed } from "../../api/feeds";
+
+interface AddFeedDialogProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export default function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
+  const [url, setUrl] = useState("");
+  const addFeed = useAddFeed();
+
+  if (!open) return null;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!url.trim()) return;
+    addFeed.mutate(url.trim(), {
+      onSuccess: () => {
+        setUrl("");
+        onClose();
+      },
+    });
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+      onClick={onClose}
+    >
+      <div
+        className="rounded-lg p-6 w-[420px] shadow-xl"
+        style={{ backgroundColor: "var(--color-bg-primary)", border: "1px solid var(--color-border)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--color-text-primary)" }}>
+          Add Feed
+        </h2>
+        <form onSubmit={handleSubmit}>
+          <input
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://example.com or feed URL"
+            autoFocus
+            className="w-full px-3 py-2 rounded-md text-sm outline-none"
+            style={{
+              backgroundColor: "var(--color-bg-secondary)",
+              color: "var(--color-text-primary)",
+              border: "1px solid var(--color-border)",
+            }}
+          />
+          {addFeed.isError && (
+            <p className="text-red-500 text-xs mt-2">
+              {addFeed.error instanceof Error ? addFeed.error.message : String(addFeed.error)}
+            </p>
+          )}
+          <div className="flex justify-end gap-2 mt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-md text-sm"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={addFeed.isPending || !url.trim()}
+              className="px-3 py-1.5 rounded-md text-sm font-medium text-white disabled:opacity-50"
+              style={{ backgroundColor: "var(--color-accent)" }}
+            >
+              {addFeed.isPending ? "Adding..." : "Add"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
