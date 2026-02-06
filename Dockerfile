@@ -19,7 +19,7 @@ COPY index.html vite.config.ts tsconfig.json tsconfig.node.json ./
 RUN pnpm build
 
 # Stage 2: Build Rust server
-FROM rust:1.83-bookworm AS rust-builder
+FROM rust:bookworm AS rust-builder
 WORKDIR /app
 
 # Install dependencies for SQLite and OpenSSL

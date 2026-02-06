@@ -24,7 +24,8 @@ impl PostgresDatabase {
     }
 
     async fn init_schema(pool: &PgPool) -> DbResult<()> {
-        sqlx::query(SCHEMA).execute(pool).await?;
+        // Use raw_sql for multi-statement schema initialization
+        sqlx::raw_sql(SCHEMA).execute(pool).await?;
         Ok(())
     }
 }

@@ -98,8 +98,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .nest("/api", api_routes)
-        .nest_service(
-            "/",
+        .fallback_service(
             ServeDir::new(&config.static_dir).append_index_html_on_directories(true),
         )
         .layer(
