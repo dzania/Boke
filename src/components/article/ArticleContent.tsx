@@ -182,6 +182,15 @@ interface ArticleContentProps {
   theme: "light" | "dark";
 }
 
+/**
+ * Strip leading whitespace from each line so that indented HTML from RSS feeds
+ * isn't treated as a CommonMark indented code block (4+ spaces) by the markdown
+ * parser before rehype-raw gets a chance to process it.
+ */
+function dedentHtml(html: string): string {
+  return html.replace(/^[ \t]+/gm, "");
+}
+
 export default function ArticleContent({ content, theme }: ArticleContentProps) {
   const isDark = theme === "dark";
 
@@ -200,7 +209,7 @@ export default function ArticleContent({ content, theme }: ArticleContentProps) 
         img: ({ node: _, ...props }) => <img loading="lazy" {...props} />,
       }}
     >
-      {content}
+      {dedentHtml(content)}
     </Markdown>
   );
 }
