@@ -2,7 +2,12 @@
 
 A clean, fast, keyboard-driven desktop RSS reader.
 
-Built with [Tauri v2](https://tauri.app), Runs natively on macOS, Windows, and Linux.
+Built with [Tauri v2](https://tauri.app). Available for macOS, Windows, and Linux.
+
+[![Latest Release](https://img.shields.io/github/v/release/dzania/Boke?style=flat-square&label=Download&color=blue)](https://github.com/dzania/Boke/releases/latest)
+[![macOS](https://img.shields.io/badge/macOS-universal-black?style=flat-square&logo=apple)](https://github.com/dzania/Boke/releases/latest)
+[![Windows](https://img.shields.io/badge/Windows-x64-0078D4?style=flat-square&logo=windows)](https://github.com/dzania/Boke/releases/latest)
+[![Linux](https://img.shields.io/badge/Linux-x64-FCC624?style=flat-square&logo=linux&logoColor=black)](https://github.com/dzania/Boke/releases/latest)
 
 ![Boke screenshot](preview.png)
 
