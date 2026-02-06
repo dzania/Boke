@@ -53,11 +53,10 @@ impl<D: Database> ArticleService<D> {
     pub async fn fetch_article_content(&self, id: i64) -> anyhow::Result<String> {
         // Check if content is already cached
         if let Some(article) = self.db.get_article(id).await? {
-            if let Some(content) = article.content {
-                if !content.is_empty() {
+            if let Some(content) = article.content
+                && !content.is_empty() {
                     return Ok(content);
                 }
-            }
 
             // Fetch content from URL
             if let Some(link) = article.link {
@@ -94,8 +93,8 @@ fn extract_main_content(html: &str) -> String {
     ];
 
     for selector_str in selectors {
-        if let Ok(selector) = Selector::parse(selector_str) {
-            if let Some(element) = document.select(&selector).next() {
+        if let Ok(selector) = Selector::parse(selector_str)
+            && let Some(element) = document.select(&selector).next() {
                 // Remove unwanted elements
                 let mut content = element.inner_html();
 
@@ -118,15 +117,13 @@ fn extract_main_content(html: &str) -> String {
                     return content;
                 }
             }
-        }
     }
 
     // Fallback: return body content
-    if let Ok(selector) = Selector::parse("body") {
-        if let Some(element) = document.select(&selector).next() {
+    if let Ok(selector) = Selector::parse("body")
+        && let Some(element) = document.select(&selector).next() {
             return element.inner_html();
         }
-    }
 
     html.to_string()
 }

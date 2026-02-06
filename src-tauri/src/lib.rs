@@ -1,7 +1,8 @@
 mod commands;
-mod db;
-mod feed;
 
+use std::sync::Arc;
+
+use boke_core::{ArticleService, DatabasePool, FeedService, FolderService};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
@@ -36,17 +37,24 @@ pub fn run() {
             commands::folders::move_feed_to_folder,
         ])
         .setup(|app| {
-            // Database
+            // Database setup using boke-core
             let app_dir = app
                 .path()
                 .app_data_dir()
                 .expect("failed to resolve app data dir");
             std::fs::create_dir_all(&app_dir).expect("failed to create app data dir");
             let db_path = app_dir.join("boke.db");
+            let db_url = format!("sqlite://{}", db_path.display());
 
-            let pool = tauri::async_runtime::block_on(db::init(&db_path))
+            // Initialize database pool and services
+            let db = tauri::async_runtime::block_on(DatabasePool::from_url(&db_url))
                 .expect("failed to initialize database");
-            app.manage(pool);
+            let db = Arc::new(db);
+
+            // Register services as managed state
+            app.manage(FeedService::new(db.clone()));
+            app.manage(ArticleService::new(db.clone()));
+            app.manage(FolderService::new(db));
 
             // System tray
             let refresh_item = MenuItemBuilder::with_id("refresh", "Refresh All").build(app)?;

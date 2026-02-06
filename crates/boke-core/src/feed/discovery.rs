@@ -3,7 +3,7 @@ use url::Url;
 
 use super::error::FeedError;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DiscoveredFeed {
     pub url: String,
 }
@@ -79,8 +79,8 @@ pub async fn discover(url: &str) -> Result<Vec<DiscoveredFeed>, FeedError> {
     // Try common feed paths
     for path in COMMON_FEED_PATHS {
         let candidate = resolve_url(&base_url, path);
-        if let Ok(resp) = client.head(&candidate).send().await {
-            if resp.status().is_success() {
+        if let Ok(resp) = client.head(&candidate).send().await
+            && resp.status().is_success() {
                 let ct = resp
                     .headers()
                     .get("content-type")
@@ -92,7 +92,6 @@ pub async fn discover(url: &str) -> Result<Vec<DiscoveredFeed>, FeedError> {
                     return Ok(feeds);
                 }
             }
-        }
     }
 
     if feeds.is_empty() {
