@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import * as api from "../lib/tauri";
+import * as api from "../lib/api";
 import { ARTICLES_PAGE_SIZE } from "../lib/constants";
 
 export function useArticles(feedId: number | null, unreadOnly = false, favoritesOnly = false) {

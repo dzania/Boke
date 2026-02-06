@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import * as api from "../lib/tauri";
+import * as api from "../lib/api";
 
 export function useFolders() {
   return useQuery({

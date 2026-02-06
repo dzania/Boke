@@ -18,13 +18,13 @@ import {
 import { useKeyboardNav } from "./hooks/useKeyboardNav";
 import { useTheme } from "./hooks/useTheme";
 import { buildSidebarItems } from "./lib/sidebarItems";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { listen } from "@tauri-apps/api/event";
 import {
-  isPermissionGranted,
-  requestPermission,
+  openUrl,
+  listen,
+  isNotificationPermissionGranted,
+  requestNotificationPermission,
   sendNotification,
-} from "@tauri-apps/plugin-notification";
+} from "./lib/platform";
 import type { Article } from "./types";
 
 export default function App() {
@@ -64,16 +64,15 @@ export default function App() {
   // Listen for new-articles event and show notification
   useEffect(() => {
     const unlisten = listen<{ total: number; feeds: number }>("new-articles", async (event) => {
-      let granted = await isPermissionGranted();
+      let granted = await isNotificationPermissionGranted();
       if (!granted) {
-        const permission = await requestPermission();
-        granted = permission === "granted";
+        granted = await requestNotificationPermission();
       }
       if (granted) {
-        sendNotification({
-          title: "Boke",
-          body: `${event.payload.total} new articles from ${event.payload.feeds} feeds`,
-        });
+        sendNotification(
+          "Boke",
+          `${event.payload.total} new articles from ${event.payload.feeds} feeds`
+        );
       }
     });
     return () => {
