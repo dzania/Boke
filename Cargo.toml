@@ -1,0 +1,54 @@
+[workspace]
+resolver = "2"
+members = [
+    "src-tauri",
+    "crates/boke-core",
+    "crates/boke-server",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["you"]
+license = "MIT"
+
+[workspace.dependencies]
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "chrono"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["rustls-tls"] }
+
+# XML/HTML parsing
+quick-xml = { version = "0.37", features = ["serialize"] }
+scraper = "0.22"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# URL handling
+url = "2"
+
+# Logging
+log = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# Async traits
+async-trait = "0.1"
+
+# HTTP server (Axum)
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
