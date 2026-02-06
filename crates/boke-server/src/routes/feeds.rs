@@ -103,7 +103,8 @@ pub async fn import_opml(
         }
     }
 
-    let content = file_content.ok_or_else(|| ApiError::BadRequest("No file provided".to_string()))?;
+    let content =
+        file_content.ok_or_else(|| ApiError::BadRequest("No file provided".to_string()))?;
 
     // Parse the OPML content
     let urls = parse_opml(&content)

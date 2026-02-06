@@ -54,9 +54,10 @@ impl<D: Database> ArticleService<D> {
         // Check if content is already cached
         if let Some(article) = self.db.get_article(id).await? {
             if let Some(content) = article.content
-                && !content.is_empty() {
-                    return Ok(content);
-                }
+                && !content.is_empty()
+            {
+                return Ok(content);
+            }
 
             // Fetch content from URL
             if let Some(link) = article.link {
@@ -94,36 +95,38 @@ fn extract_main_content(html: &str) -> String {
 
     for selector_str in selectors {
         if let Ok(selector) = Selector::parse(selector_str)
-            && let Some(element) = document.select(&selector).next() {
-                // Remove unwanted elements
-                let mut content = element.inner_html();
+            && let Some(element) = document.select(&selector).next()
+        {
+            // Remove unwanted elements
+            let mut content = element.inner_html();
 
-                // Basic cleanup
-                content = content
-                    .lines()
-                    .filter(|line| {
-                        let lower = line.to_lowercase();
-                        !lower.contains("<nav")
-                            && !lower.contains("<footer")
-                            && !lower.contains("<script")
-                            && !lower.contains("<style")
-                            && !lower.contains("<iframe")
-                            && !lower.contains("<aside")
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
+            // Basic cleanup
+            content = content
+                .lines()
+                .filter(|line| {
+                    let lower = line.to_lowercase();
+                    !lower.contains("<nav")
+                        && !lower.contains("<footer")
+                        && !lower.contains("<script")
+                        && !lower.contains("<style")
+                        && !lower.contains("<iframe")
+                        && !lower.contains("<aside")
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
 
-                if !content.trim().is_empty() {
-                    return content;
-                }
+            if !content.trim().is_empty() {
+                return content;
             }
+        }
     }
 
     // Fallback: return body content
     if let Ok(selector) = Selector::parse("body")
-        && let Some(element) = document.select(&selector).next() {
-            return element.inner_html();
-        }
+        && let Some(element) = document.select(&selector).next()
+    {
+        return element.inner_html();
+    }
 
     html.to_string()
 }

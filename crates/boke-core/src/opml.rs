@@ -1,7 +1,7 @@
 //! OPML parsing for feed import/export.
 
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -28,14 +28,13 @@ pub fn parse_opml(xml: &str) -> Result<Vec<String>, OpmlError> {
             {
                 let mut xml_url = None;
                 for attr in e.attributes().flatten() {
-                    if attr.key.as_ref() == b"xmlUrl" || attr.key.as_ref() == b"xmlurl" {
-                        if let Ok(val) = attr.unescape_value() {
+                    if (attr.key.as_ref() == b"xmlUrl" || attr.key.as_ref() == b"xmlurl")
+                        && let Ok(val) = attr.unescape_value() {
                             let url = val.to_string();
                             if !url.is_empty() {
                                 xml_url = Some(url);
                             }
                         }
-                    }
                 }
                 if let Some(url) = xml_url {
                     urls.push(url);

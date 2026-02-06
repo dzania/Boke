@@ -10,7 +10,7 @@ pub mod rss2;
 use detector::FeedFormat;
 use model::Feed;
 
-pub use discovery::{discover, DiscoveredFeed};
+pub use discovery::{DiscoveredFeed, discover};
 pub use error::FeedError;
 pub use model::{Feed as ParsedFeed, FeedEntry as ParsedFeedEntry};
 

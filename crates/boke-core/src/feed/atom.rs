@@ -56,18 +56,16 @@ pub fn parse(xml: &[u8], feed_url: &str) -> Result<Feed, FeedError> {
                     }
                     "category" => {
                         // Atom categories: <category term="..." />
-                        if in_entry
-                            && let Some(ref mut entry) = current_entry {
-                                for attr in e.attributes().flatten() {
-                                    if attr.key.as_ref() == b"term" {
-                                        let val =
-                                            attr.unescape_value().unwrap_or_default().to_string();
-                                        if !val.is_empty() {
-                                            entry.categories.push(val);
-                                        }
+                        if in_entry && let Some(ref mut entry) = current_entry {
+                            for attr in e.attributes().flatten() {
+                                if attr.key.as_ref() == b"term" {
+                                    let val = attr.unescape_value().unwrap_or_default().to_string();
+                                    if !val.is_empty() {
+                                        entry.categories.push(val);
                                     }
                                 }
                             }
+                        }
                     }
                     _ => {}
                 }
@@ -83,18 +81,16 @@ pub fn parse(xml: &[u8], feed_url: &str) -> Result<Feed, FeedError> {
                         extract_link(e, &mut feed, &mut current_entry, in_entry);
                     }
                     "category" => {
-                        if in_entry
-                            && let Some(ref mut entry) = current_entry {
-                                for attr in e.attributes().flatten() {
-                                    if attr.key.as_ref() == b"term" {
-                                        let val =
-                                            attr.unescape_value().unwrap_or_default().to_string();
-                                        if !val.is_empty() {
-                                            entry.categories.push(val);
-                                        }
+                        if in_entry && let Some(ref mut entry) = current_entry {
+                            for attr in e.attributes().flatten() {
+                                if attr.key.as_ref() == b"term" {
+                                    let val = attr.unescape_value().unwrap_or_default().to_string();
+                                    if !val.is_empty() {
+                                        entry.categories.push(val);
                                     }
                                 }
                             }
+                        }
                     }
                     _ => {}
                 }
@@ -184,9 +180,10 @@ fn extract_link(
     if !href.is_empty() && (rel == "alternate" || rel.is_empty()) {
         if in_entry {
             if let Some(entry) = &mut *current_entry
-                && entry.link.is_empty() {
-                    entry.link = href;
-                }
+                && entry.link.is_empty()
+            {
+                entry.link = href;
+            }
         } else if feed.link.is_empty() {
             feed.link = href;
         }

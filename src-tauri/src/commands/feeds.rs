@@ -1,8 +1,6 @@
 //! Feed-related Tauri commands.
 
-use boke_core::{
-    parse_opml, DatabasePool, FeedService, FeedWithMeta, OpmlError, RefreshResult,
-};
+use boke_core::{DatabasePool, FeedService, FeedWithMeta, OpmlError, RefreshResult, parse_opml};
 use tauri::{AppHandle, Emitter, State};
 
 #[tauri::command]
