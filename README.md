@@ -105,6 +105,16 @@ Collapse the sidebar to give the reader pane more room. Toggle it with `b`.
 
 Prebuilt binaries for **macOS**, **Windows**, and **Linux** are available on the [Releases](https://github.com/dzania/Boke/releases/latest) page. Download the latest version for your platform and install.
 
+### macOS — "app is damaged" or "unidentified developer"
+
+The app is not signed with an Apple Developer certificate, so macOS Gatekeeper will block it. To open it, run this after installing:
+
+```bash
+xattr -cr /Applications/Boke.app
+```
+
+Then open the app normally. You only need to do this once.
+
 ---
 
 ## Build from source
