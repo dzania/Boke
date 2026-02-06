@@ -43,19 +43,19 @@ fn resolve_urls_with_quote(html: &str, base: &Url, quote: char) -> String {
                     && !url_val.starts_with('#')
                     && !url_val.starts_with("javascript:")
                     && !url_val.starts_with("mailto:")
-                    && let Ok(resolved) = base.join(url_val) {
-                        let replacement =
-                            format!("{}={}{}{}", attr, quote, resolved.as_str(), quote);
-                        let full_match_end = value_end + 1;
-                        result = format!(
-                            "{}{}{}",
-                            &result[..abs_start],
-                            replacement,
-                            &result[full_match_end..]
-                        );
-                        search_start = abs_start + replacement.len();
-                        continue;
-                    }
+                    && let Ok(resolved) = base.join(url_val)
+                {
+                    let replacement = format!("{}={}{}{}", attr, quote, resolved.as_str(), quote);
+                    let full_match_end = value_end + 1;
+                    result = format!(
+                        "{}{}{}",
+                        &result[..abs_start],
+                        replacement,
+                        &result[full_match_end..]
+                    );
+                    search_start = abs_start + replacement.len();
+                    continue;
+                }
                 search_start = value_end + 1;
             } else {
                 break;
@@ -85,20 +85,22 @@ pub fn extract_article_content(html: &str) -> String {
 
     for sel_str in &selectors {
         if let Ok(sel) = Selector::parse(sel_str)
-            && let Some(el) = doc.select(&sel).next() {
-                let inner = el.inner_html();
-                let cleaned = clean_html(&inner);
-                if cleaned.len() > 200 {
-                    return cleaned;
-                }
+            && let Some(el) = doc.select(&sel).next()
+        {
+            let inner = el.inner_html();
+            let cleaned = clean_html(&inner);
+            if cleaned.len() > 200 {
+                return cleaned;
             }
+        }
     }
 
     // Fallback: use body
     if let Ok(body_sel) = Selector::parse("body")
-        && let Some(body) = doc.select(&body_sel).next() {
-            return clean_html(&body.inner_html());
-        }
+        && let Some(body) = doc.select(&body_sel).next()
+    {
+        return clean_html(&body.inner_html());
+    }
 
     String::new()
 }

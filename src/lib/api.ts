@@ -10,7 +10,9 @@ import type { FeedWithMeta, Article, Folder, RefreshResult, DiscoveredFeed } fro
 // Runtime detection - check if we're running in Tauri (evaluated at call time, not module load)
 // Tauri v2 uses __TAURI_INTERNALS__, v1 used __TAURI__
 function isTauri(): boolean {
-  return typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
+  return (
+    typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)
+  );
 }
 
 // Lazy imports for tree-shaking

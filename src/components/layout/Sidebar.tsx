@@ -132,7 +132,7 @@ export default function Sidebar({
   // Including sidebarIndex in deps causes React to detach/reattach the ref
   // on each index change, triggering the scroll logic.
   const navRef = useRef<HTMLElement | null>(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   const highlightRef = useCallback(
     (node: HTMLElement | null) => {
       if (!node) return;
