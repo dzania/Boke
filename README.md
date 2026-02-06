@@ -1,6 +1,10 @@
-# Boke
+<p align="center">
+  <img src="src-tauri/icons/128x128@2x.png" width="128" height="128" alt="Boke logo">
+</p>
 
-A clean, fast, keyboard-driven desktop RSS reader.
+<h1 align="center">Boke</h1>
+
+<p align="center">A clean, fast, keyboard-driven desktop RSS reader.</p>
 
 Built with [Tauri v2](https://tauri.app). Available for macOS, Windows, and Linux.
 
@@ -94,3 +98,39 @@ Follows your system theme automatically, or toggle it manually. The setting is p
 Collapse the sidebar to give the reader pane more room. Toggle it with `b`.
 
 ![Collapsed sidebar](readme%20images/collapse-sidebar.png)
+
+---
+
+## Download
+
+Prebuilt binaries for **macOS**, **Windows**, and **Linux** are available on the [Releases](https://github.com/dzania/Boke/releases/latest) page. Download the latest version for your platform and install.
+
+---
+
+## Build from source
+
+### Prerequisites
+
+- [Rust](https://www.rust-lang.org/tools/install)
+- [Node.js](https://nodejs.org/) (v18+)
+- [pnpm](https://pnpm.io/installation)
+- Tauri v2 system dependencies -- see the [Tauri prerequisites guide](https://v2.tauri.app/start/prerequisites/)
+
+### Steps
+
+```bash
+# Clone the repository
+git clone https://github.com/dzania/Boke.git
+cd Boke
+
+# Install frontend dependencies
+pnpm install
+
+# Run in development mode
+pnpm tauri dev
+
+# Build for production
+pnpm tauri build
+```
+
+The production build output will be in `src-tauri/target/release/bundle/`.
