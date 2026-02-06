@@ -9,7 +9,7 @@ Built with [Tauri v2](https://tauri.app). Available for macOS, Windows, and Linu
 [![Windows](https://img.shields.io/badge/Windows-x64-0078D4?style=flat-square&logo=windows)](https://github.com/dzania/Boke/releases/latest)
 [![Linux](https://img.shields.io/badge/Linux-x64-FCC624?style=flat-square&logo=linux&logoColor=black)](https://github.com/dzania/Boke/releases/latest)
 
-![Boke screenshot](preview.png)
+![Boke screenshot](readme%20images/preview.png)
 
 ---
 
@@ -68,3 +68,29 @@ RSS 2.0, RSS 1.0 (RDF), and Atom.
 | `b` | Toggle article list panel |
 | `/` or `Cmd+K` | Search articles |
 | `?` | Show keyboard shortcuts |
+
+---
+
+## Article rendering
+
+Boke renders articles with full rich-content support. Images referenced with relative paths in feed content are resolved against the source URL so they display correctly. Code blocks get syntax highlighting powered by [Shiki](https://shiki.style/).
+
+![Syntax highlighting](readme%20images/syntax-highlight.png)
+
+![Image rendering](readme%20images/Image-preview.png)
+
+---
+
+## Dark mode
+
+Follows your system theme automatically, or toggle it manually. The setting is persisted across sessions.
+
+![Dark mode](readme%20images/dark-mode.png)
+
+---
+
+## Collapsible sidebar
+
+Collapse the sidebar to give the reader pane more room. Toggle it with `b`.
+
+![Collapsed sidebar](readme%20images/collapse-sidebar.png)

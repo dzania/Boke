@@ -1,7 +1,9 @@
+use regex::Regex;
 use scraper::{Html, Selector};
 use serde::Serialize;
 use sqlx::{FromRow, QueryBuilder, Sqlite, SqlitePool};
 use tauri::State;
+use url::Url;
 
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct Article {
@@ -181,7 +183,8 @@ pub async fn fetch_article_content(
         .await
         .map_err(|e| e.to_string())?;
 
-    let content = extract_article_content(&html);
+    let extracted = extract_article_content(&html);
+    let content = resolve_relative_urls(&extracted, &link);
 
     // Cache the full content in the DB
     sqlx::query("UPDATE articles SET content = ? WHERE id = ?")
@@ -233,7 +236,7 @@ fn extract_article_content(html: &str) -> String {
     String::new()
 }
 
-/// Remove noise elements (nav, footer, header, aside, script, style) from HTML.
+/// Remove noise elements and strip framework attributes from HTML.
 fn clean_html(html: &str) -> String {
     let doc = Html::parse_fragment(html);
     let noise_tags = [
@@ -251,5 +254,181 @@ fn clean_html(html: &str) -> String {
         }
     }
 
+    // Strip class and style attributes — they reference CSS we don't have
+    let class_re = Regex::new(r#"\s+class="[^"]*""#).unwrap();
+    let style_re = Regex::new(r#"\s+style="[^"]*""#).unwrap();
+    output = class_re.replace_all(&output, "").to_string();
+    output = style_re.replace_all(&output, "").to_string();
+
     output
+}
+
+/// Resolve relative URLs (src, href, poster) in HTML to absolute using the given base URL.
+/// Handles root-relative (/path), path-relative (img/foo.png), and leaves absolute URLs as-is.
+pub(crate) fn resolve_relative_urls(html: &str, base_url: &str) -> String {
+    let base = match Url::parse(base_url) {
+        Ok(u) => u,
+        Err(_) => return html.to_string(),
+    };
+
+    // Double-quoted attributes
+    let re_dq = Regex::new(r#"(src|href|poster)\s*=\s*"([^"]+)""#).unwrap();
+    let result = re_dq
+        .replace_all(html, |caps: &regex::Captures| {
+            resolve_attr(&base, &caps[0], &caps[1], &caps[2], '"')
+        })
+        .to_string();
+
+    // Single-quoted attributes
+    let re_sq = Regex::new(r#"(src|href|poster)\s*=\s*'([^']+)'"#).unwrap();
+    re_sq
+        .replace_all(&result, |caps: &regex::Captures| {
+            resolve_attr(&base, &caps[0], &caps[1], &caps[2], '\'')
+        })
+        .to_string()
+}
+
+fn resolve_attr(base: &Url, full_match: &str, attr: &str, url_val: &str, quote: char) -> String {
+    // Skip data URIs, anchors, javascript:, mailto:
+    if url_val.starts_with("data:")
+        || url_val.starts_with('#')
+        || url_val.starts_with("javascript:")
+        || url_val.starts_with("mailto:")
+    {
+        return full_match.to_string();
+    }
+
+    match base.join(url_val) {
+        Ok(resolved) => format!("{}={1}{2}{1}", attr, quote, resolved.as_str()),
+        Err(_) => full_match.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_root_relative_src() {
+        let html = r#"<img src="/images/photo.jpg">"#;
+        let result = resolve_relative_urls(html, "https://example.com/blog/post");
+        assert_eq!(result, r#"<img src="https://example.com/images/photo.jpg">"#);
+    }
+
+    #[test]
+    fn resolve_path_relative_src() {
+        let html = r#"<img src="images/photo.jpg">"#;
+        let result = resolve_relative_urls(html, "https://example.com/blog/post");
+        assert_eq!(result, r#"<img src="https://example.com/blog/images/photo.jpg">"#);
+    }
+
+    #[test]
+    fn resolve_parent_relative_src() {
+        let html = r#"<img src="../images/photo.jpg">"#;
+        let result = resolve_relative_urls(html, "https://example.com/blog/post/article");
+        assert_eq!(result, r#"<img src="https://example.com/blog/images/photo.jpg">"#);
+    }
+
+    #[test]
+    fn leave_absolute_urls_unchanged() {
+        let html = r#"<img src="https://cdn.example.com/photo.jpg">"#;
+        let result = resolve_relative_urls(html, "https://example.com/blog");
+        assert_eq!(result, r#"<img src="https://cdn.example.com/photo.jpg">"#);
+    }
+
+    #[test]
+    fn leave_protocol_relative_urls_unchanged() {
+        let html = r#"<img src="//cdn.example.com/photo.jpg">"#;
+        let result = resolve_relative_urls(html, "https://example.com/blog");
+        assert_eq!(result, r#"<img src="https://cdn.example.com/photo.jpg">"#);
+    }
+
+    #[test]
+    fn skip_data_uris() {
+        let html = r#"<img src="data:image/png;base64,abc123">"#;
+        let result = resolve_relative_urls(html, "https://example.com");
+        assert_eq!(result, r#"<img src="data:image/png;base64,abc123">"#);
+    }
+
+    #[test]
+    fn skip_anchor_links() {
+        let html = r##"<a href="#section">Link</a>"##;
+        let result = resolve_relative_urls(html, "https://example.com/page");
+        assert_eq!(result, r##"<a href="#section">Link</a>"##);
+    }
+
+    #[test]
+    fn skip_javascript_hrefs() {
+        let html = r#"<a href="javascript:void(0)">Click</a>"#;
+        let result = resolve_relative_urls(html, "https://example.com");
+        assert_eq!(result, r#"<a href="javascript:void(0)">Click</a>"#);
+    }
+
+    #[test]
+    fn skip_mailto_links() {
+        let html = r#"<a href="mailto:test@example.com">Email</a>"#;
+        let result = resolve_relative_urls(html, "https://example.com");
+        assert_eq!(result, r#"<a href="mailto:test@example.com">Email</a>"#);
+    }
+
+    #[test]
+    fn resolve_href_and_src_together() {
+        let html = r#"<a href="/page"><img src="/img/pic.png"></a>"#;
+        let result = resolve_relative_urls(html, "https://example.com/blog/post");
+        assert_eq!(
+            result,
+            r#"<a href="https://example.com/page"><img src="https://example.com/img/pic.png"></a>"#
+        );
+    }
+
+    #[test]
+    fn resolve_single_quoted_attributes() {
+        let html = "<img src='/images/photo.jpg'>";
+        let result = resolve_relative_urls(html, "https://example.com/blog/post");
+        assert_eq!(result, "<img src='https://example.com/images/photo.jpg'>");
+    }
+
+    #[test]
+    fn resolve_poster_attribute() {
+        let html = r#"<video poster="/thumb.jpg"></video>"#;
+        let result = resolve_relative_urls(html, "https://example.com/videos/v1");
+        assert_eq!(result, r#"<video poster="https://example.com/thumb.jpg"></video>"#);
+    }
+
+    #[test]
+    fn invalid_base_url_returns_unchanged() {
+        let html = r#"<img src="/photo.jpg">"#;
+        let result = resolve_relative_urls(html, "not-a-url");
+        assert_eq!(result, html);
+    }
+
+    #[test]
+    fn empty_html_returns_empty() {
+        let result = resolve_relative_urls("", "https://example.com");
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn no_matching_attributes_returns_unchanged() {
+        let html = "<p>Hello world</p>";
+        let result = resolve_relative_urls(html, "https://example.com");
+        assert_eq!(result, html);
+    }
+
+    #[test]
+    fn multiple_images_all_resolved() {
+        let html = r#"<img src="/a.jpg"><img src="/b.png"><img src="c.gif">"#;
+        let result = resolve_relative_urls(html, "https://example.com/blog/post");
+        assert_eq!(
+            result,
+            r#"<img src="https://example.com/a.jpg"><img src="https://example.com/b.png"><img src="https://example.com/blog/c.gif">"#
+        );
+    }
+
+    #[test]
+    fn resolve_with_trailing_slash_base() {
+        let html = r#"<img src="photo.jpg">"#;
+        let result = resolve_relative_urls(html, "https://example.com/blog/");
+        assert_eq!(result, r#"<img src="https://example.com/blog/photo.jpg">"#);
+    }
 }

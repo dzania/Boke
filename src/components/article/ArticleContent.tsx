@@ -7,15 +7,58 @@ import type { Root, Element } from "hast";
 import { visit } from "unist-util-visit";
 import CodeBlock from "./CodeBlock";
 
+const SVG_TAGS = [
+  "svg", "g", "path", "circle", "ellipse", "rect", "line", "polyline",
+  "polygon", "text", "tspan", "defs", "use", "symbol", "clipPath",
+  "linearGradient", "radialGradient", "stop", "marker", "pattern",
+  "mask", "image", "foreignObject", "desc", "title", "animate",
+  "animateTransform", "animateMotion", "set",
+];
+
+const SVG_ATTRS = [
+  "viewBox", "xmlns", "fill", "stroke", "strokeWidth", "strokeLinecap",
+  "strokeLinejoin", "strokeDasharray", "strokeDashoffset", "opacity",
+  "d", "cx", "cy", "r", "rx", "ry", "x", "y", "x1", "y1", "x2", "y2",
+  "width", "height", "transform", "points", "textAnchor", "dominantBaseline",
+  "fontFamily", "fontSize", "fontWeight", "letterSpacing", "dx", "dy",
+  "id", "clipPath", "clipRule", "fillRule", "fillOpacity", "strokeOpacity",
+  "markerEnd", "markerStart", "markerMid", "gradientUnits", "gradientTransform",
+  "offset", "stopColor", "stopOpacity", "patternUnits", "patternTransform",
+  "href", "xlinkHref", "preserveAspectRatio", "role", "ariaLabel", "ariaHidden",
+];
+
 const sanitizeSchema = {
   ...defaultSchema,
+  tagNames: [...(defaultSchema.tagNames || []), ...SVG_TAGS, "figure", "figcaption", "picture", "source", "video", "audio", "iframe"],
   attributes: {
     ...defaultSchema.attributes,
+    "*": [...(defaultSchema.attributes?.["*"] || []), "className", "style"],
     code: ["className", "inline", "dataLang", "dataLanguage"],
     pre: ["className", "dataLang", "dataLanguage"],
-    span: [...(defaultSchema.attributes?.span || []), "className", "style"],
+    iframe: ["src", "width", "height", "frameBorder", "allow", "allowFullScreen"],
+    video: ["src", "width", "height", "controls", "poster"],
+    audio: ["src", "controls"],
+    source: ["src", "type"],
+    ...Object.fromEntries(SVG_TAGS.map((tag) => [tag, SVG_ATTRS])),
   },
 };
+
+/**
+ * Rehype plugin: strip inline styles from <pre> and its descendants.
+ * Blogs (e.g. Astro) embed theme-specific colors as inline styles which override our styling.
+ */
+function rehypeCleanCodeBlocks() {
+  return (tree: Root) => {
+    visit(tree, "element", (node: Element) => {
+      if (node.tagName !== "pre") return;
+      delete node.properties.style;
+      delete node.properties.className;
+      visit(node, "element", (child: Element) => {
+        delete child.properties.style;
+      });
+    });
+  };
+}
 
 /**
  * Rehype plugin: copy data-language from <pre> to its child <code> as a className.
@@ -56,20 +99,24 @@ function rehypeCopyLanguage() {
 
 interface ArticleContentProps {
   content: string;
+  theme: "light" | "dark";
 }
 
-export default function ArticleContent({ content }: ArticleContentProps) {
+export default function ArticleContent({ content, theme }: ArticleContentProps) {
+  const isDark = theme === "dark";
+
   return (
     <Markdown
       remarkPlugins={[remarkGfm]}
       rehypePlugins={[
         rehypeRaw,
         [rehypeSanitize, sanitizeSchema],
+        rehypeCleanCodeBlocks,
         rehypeCopyLanguage,
         rehypeInlineCodeProperty,
       ]}
       components={{
-        code: CodeBlock,
+        code: (props) => <CodeBlock {...props} isDark={isDark} />,
         img: ({ node: _, ...props }) => <img loading="lazy" {...props} />,
       }}
     >

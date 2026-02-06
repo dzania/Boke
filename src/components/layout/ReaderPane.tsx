@@ -12,9 +12,10 @@ interface ReaderPaneProps {
   readerRef: React.RefObject<HTMLElement | null>;
   onToggleFavorite: (articleId: number) => void;
   onToggleRead: (articleId: number) => void;
+  theme: "light" | "dark";
 }
 
-export default function ReaderPane({ article, readerRef, onToggleFavorite, onToggleRead }: ReaderPaneProps) {
+export default function ReaderPane({ article, readerRef, onToggleFavorite, onToggleRead, theme }: ReaderPaneProps) {
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [fetching, setFetching] = useState(false);
 
@@ -47,8 +48,8 @@ export default function ReaderPane({ article, readerRef, onToggleFavorite, onTog
     return (
       <main
         ref={readerRef}
-        className="flex-1 h-full overflow-y-auto"
-        style={{ backgroundColor: "var(--color-bg-primary)" }}
+        className="flex-1 h-full min-h-0 overflow-y-auto"
+        style={{ backgroundColor: "var(--color-bg-primary)", overscrollBehavior: "contain" }}
       >
         <div
           className="flex flex-col items-center justify-center h-full text-center px-4"
@@ -72,8 +73,8 @@ export default function ReaderPane({ article, readerRef, onToggleFavorite, onTog
   return (
     <main
       ref={readerRef}
-      className="flex-1 h-full overflow-y-auto"
-      style={{ backgroundColor: "var(--color-bg-primary)" }}
+      className="flex-1 h-full min-h-0 overflow-y-auto"
+      style={{ backgroundColor: "var(--color-bg-primary)", overscrollBehavior: "contain" }}
       aria-label={`Reading: ${article.title}`}
     >
       <article className="reader-content py-8 px-6">
@@ -138,9 +139,10 @@ export default function ReaderPane({ article, readerRef, onToggleFavorite, onTog
         {fetching && !fullContent ? (
           <ReaderSkeleton />
         ) : (
-          <ArticleContent content={displayContent} />
+          <ArticleContent content={displayContent} theme={theme} />
         )}
       </article>
     </main>
   );
 }
+

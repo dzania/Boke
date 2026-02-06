@@ -1,10 +1,11 @@
-import { useState, useMemo } from "react";
-import { useFeeds, useRefreshAllFeeds } from "../../api/feeds";
+import { useState, useCallback, useRef, useMemo } from "react";
+import { useFeeds, useRefreshAllFeeds, useRemoveFeed } from "../../api/feeds";
 import { useFavoritesCount } from "../../api/articles";
 import { useFolders, useCreateFolder, useDeleteFolder, useMoveFeedToFolder } from "../../api/folders";
 import AddFeedDialog from "../feed/AddFeedDialog";
 import { FeedListSkeleton } from "../ui/Skeleton";
-import type { FeedWithMeta } from "../../types";
+import type { FeedWithMeta, SidebarItem } from "../../types";
+import type { FocusZone } from "../../hooks/useKeyboardNav";
 
 type FilterType = "all" | "unread" | "favourites";
 
@@ -21,22 +22,31 @@ interface SidebarProps {
   onOpenHelp: () => void;
   articleListVisible: boolean;
   onToggleArticleList: () => void;
+  collapsedFolders: Set<number>;
+  onToggleFolder: (folderId: number) => void;
+  focusZone: FocusZone;
+  sidebarIndex: number;
+  sidebarItems: SidebarItem[];
 }
 
-function SmartGroupButton({ icon, label, active, badge, onClick }: {
+function SmartGroupButton({ icon, label, active, badge, onClick, highlighted, highlightRef }: {
   icon: React.ReactNode;
   label: string;
   active: boolean;
   badge?: number;
   onClick: () => void;
+  highlighted?: boolean;
+  highlightRef?: React.RefCallback<HTMLElement>;
 }) {
   return (
     <button
       type="button"
+      ref={highlighted ? highlightRef : undefined}
       className="w-full flex items-center justify-between px-3 py-1.5 rounded-md text-sm transition-colors mt-0.5"
       style={{
-        backgroundColor: active ? "var(--color-bg-secondary)" : "transparent",
+        backgroundColor: active || highlighted ? "var(--color-bg-secondary)" : "transparent",
         color: "var(--color-text-primary)",
+        borderLeft: highlighted ? "2px solid var(--color-accent)" : "2px solid transparent",
       }}
       onClick={onClick}
     >
@@ -59,9 +69,10 @@ export default function Sidebar({
   activeFilter, onSelectFilter,
   showAddFeed, onOpenAddFeed, onCloseAddFeed, onOpenHelp,
   articleListVisible, onToggleArticleList,
+  collapsedFolders, onToggleFolder,
+  focusZone, sidebarIndex, sidebarItems,
 }: SidebarProps) {
   const [feedsCollapsed, setFeedsCollapsed] = useState(false);
-  const [collapsedFolders, setCollapsedFolders] = useState<Set<number>>(new Set());
   const [newFolderName, setNewFolderName] = useState("");
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [draggingFeedId, setDraggingFeedId] = useState<number | null>(null);
@@ -73,17 +84,42 @@ export default function Sidebar({
   const createFolder = useCreateFolder();
   const deleteFolder = useDeleteFolder();
   const moveFeed = useMoveFeedToFolder();
+  const removeFeed = useRemoveFeed();
+  const [confirmDeleteFeedId, setConfirmDeleteFeedId] = useState<number | null>(null);
 
   const totalUnread = feeds?.reduce((sum, f) => sum + f.unread_count, 0) ?? 0;
 
-  const toggleFolderCollapsed = (folderId: number) => {
-    setCollapsedFolders((prev) => {
-      const next = new Set(prev);
-      if (next.has(folderId)) next.delete(folderId);
-      else next.add(folderId);
-      return next;
-    });
+  // Helper: check if a given sidebar index is the currently highlighted one
+  const inSidebar = focusZone === "sidebar";
+  const isHighlighted = (item: SidebarItem): boolean => {
+    if (!inSidebar) return false;
+    const current = sidebarItems[sidebarIndex];
+    if (!current) return false;
+    if (item.kind !== current.kind) return false;
+    if (item.kind === "filter" && current.kind === "filter") return item.filter === current.filter;
+    if (item.kind === "folder" && current.kind === "folder") return item.folderId === current.folderId;
+    if (item.kind === "feed" && current.kind === "feed") return item.feedId === current.feedId;
+    return false;
   };
+
+  // Scroll highlighted sidebar item into view via callback ref.
+  // Including sidebarIndex in deps causes React to detach/reattach the ref
+  // on each index change, triggering the scroll logic.
+  const navRef = useRef<HTMLElement | null>(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const highlightRef = useCallback((node: HTMLElement | null) => {
+    if (!node) return;
+    const scrollable = navRef.current;
+    if (scrollable && scrollable.contains(node)) {
+      const navRect = scrollable.getBoundingClientRect();
+      const elRect = node.getBoundingClientRect();
+      if (elRect.bottom > navRect.bottom) {
+        scrollable.scrollTop += elRect.bottom - navRect.bottom + 4;
+      } else if (elRect.top < navRect.top) {
+        scrollable.scrollTop -= navRect.top - elRect.top + 4;
+      }
+    }
+  }, [inSidebar, sidebarIndex]);
 
   // Group feeds by folder
   const { folderGroups, unfolderedFeeds } = useMemo(() => {
@@ -108,30 +144,47 @@ export default function Sidebar({
     });
   };
 
-  const renderFeedButton = (feed: FeedWithMeta) => (
-    <button
+  const handleDeleteFeed = (feedId: number) => {
+    removeFeed.mutate(feedId, {
+      onSuccess: () => {
+        setConfirmDeleteFeedId(null);
+        if (activeFeedId === feedId) onSelectFeed(null);
+      },
+    });
+  };
+
+  const renderFeedButton = (feed: FeedWithMeta) => {
+    const feedHighlighted = isHighlighted({ kind: "feed", feedId: feed.id });
+    return (
+    <div
       key={feed.id}
-      type="button"
-      draggable
-      className="w-full flex items-center justify-between px-3 py-1.5 rounded-md text-sm transition-colors mt-0.5 group"
+      ref={feedHighlighted ? highlightRef : undefined}
+      className="flex items-center group/feed mt-0.5 rounded-md transition-colors"
       style={{
-        backgroundColor: activeFeedId === feed.id ? "var(--color-bg-secondary)" : "transparent",
-        color: "var(--color-text-primary)",
-        opacity: draggingFeedId === feed.id ? 0.5 : 1,
-        cursor: draggingFeedId ? "grabbing" : "grab",
-      }}
-      onClick={() => onSelectFeed(feed.id)}
-      onDragStart={(e) => {
-        setDraggingFeedId(feed.id);
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", String(feed.id));
-      }}
-      onDragEnd={() => {
-        setDraggingFeedId(null);
-        setDropTargetFolderId(null);
+        backgroundColor: (activeFeedId === feed.id || feedHighlighted) ? "var(--color-bg-secondary)" : "transparent",
+        borderLeft: feedHighlighted ? "2px solid var(--color-accent)" : "2px solid transparent",
       }}
     >
-      <span className="flex items-center gap-2 truncate mr-2">
+      <button
+        type="button"
+        draggable
+        className="flex-1 min-w-0 flex items-center gap-2 px-3 py-1.5 text-sm"
+        style={{
+          color: "var(--color-text-primary)",
+          opacity: draggingFeedId === feed.id ? 0.5 : 1,
+          cursor: draggingFeedId ? "grabbing" : "grab",
+        }}
+        onClick={() => onSelectFeed(feed.id)}
+        onDragStart={(e) => {
+          setDraggingFeedId(feed.id);
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", String(feed.id));
+        }}
+        onDragEnd={() => {
+          setDraggingFeedId(null);
+          setDropTargetFolderId(null);
+        }}
+      >
         {feed.favicon_url ? (
           <img
             src={feed.favicon_url}
@@ -148,14 +201,53 @@ export default function Sidebar({
           </svg>
         )}
         <span className="truncate">{feed.title}</span>
-      </span>
-      {feed.unread_count > 0 && (
-        <span className="text-xs shrink-0" style={{ color: "var(--color-text-muted)" }}>
-          {feed.unread_count}
-        </span>
-      )}
-    </button>
+      </button>
+      <div className="shrink-0 flex items-center pr-2">
+        {confirmDeleteFeedId === feed.id ? (
+          <span className="flex items-center gap-1 text-xs">
+            <button
+              type="button"
+              className="px-1.5 py-0.5 rounded font-medium hover:opacity-80"
+              style={{ color: "var(--color-danger, #ef4444)" }}
+              onClick={() => handleDeleteFeed(feed.id)}
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              className="px-1.5 py-0.5 rounded hover:opacity-80"
+              style={{ color: "var(--color-text-muted)" }}
+              onClick={() => setConfirmDeleteFeedId(null)}
+            >
+              Cancel
+            </button>
+          </span>
+        ) : (
+          <>
+            {feed.unread_count > 0 && (
+              <span className="text-xs group-hover/feed:hidden" style={{ color: "var(--color-text-muted)" }}>
+                {feed.unread_count}
+              </span>
+            )}
+            <button
+              type="button"
+              aria-label={`Delete feed ${feed.title}`}
+              className={`p-1 rounded-md hover:opacity-100 transition-opacity ${feed.unread_count > 0 ? "hidden group-hover/feed:block" : "opacity-0 group-hover/feed:opacity-60"}`}
+              style={{ color: "var(--color-text-muted)" }}
+              title="Delete feed"
+              onClick={() => setConfirmDeleteFeedId(feed.id)}
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M2 4h12M5.5 4V2.5a1 1 0 011-1h3a1 1 0 011 1V4M6.5 7v4M9.5 7v4" />
+                <path d="M3.5 4l.5 9a1.5 1.5 0 001.5 1.5h5A1.5 1.5 0 0012 13l.5-9" />
+              </svg>
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   );
+  };
 
   return (
     <aside
@@ -260,6 +352,8 @@ export default function Sidebar({
           active={activeFeedId === null && activeFilter === "all"}
           badge={totalUnread > 0 ? totalUnread : undefined}
           onClick={() => onSelectFilter("all")}
+          highlighted={isHighlighted({ kind: "filter", filter: "all" })}
+          highlightRef={highlightRef}
         />
         <SmartGroupButton
           icon={<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 1.5l2.1 4.2 4.7.7-3.4 3.3.8 4.7L8 12l-4.2 2.4.8-4.7L1.2 6.4l4.7-.7z" /></svg>}
@@ -267,6 +361,8 @@ export default function Sidebar({
           active={activeFeedId === null && activeFilter === "favourites"}
           badge={favoritesCount && favoritesCount > 0 ? favoritesCount : undefined}
           onClick={() => onSelectFilter("favourites")}
+          highlighted={isHighlighted({ kind: "filter", filter: "favourites" })}
+          highlightRef={highlightRef}
         />
         <SmartGroupButton
           icon={<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="6.5" /><circle cx="8" cy="8" r="2.5" fill="currentColor" stroke="none" /></svg>}
@@ -274,11 +370,13 @@ export default function Sidebar({
           active={activeFeedId === null && activeFilter === "unread"}
           badge={totalUnread > 0 ? totalUnread : undefined}
           onClick={() => onSelectFilter("unread")}
+          highlighted={isHighlighted({ kind: "filter", filter: "unread" })}
+          highlightRef={highlightRef}
         />
       </div>
 
       {/* Feed List */}
-      <nav className="flex-1 overflow-y-auto" aria-label="Feeds">
+      <nav ref={navRef} className="flex-1 min-h-0 overflow-y-auto" aria-label="Feeds">
         <div className="flex items-center justify-between px-4 py-1.5">
           <button
             type="button"
@@ -341,10 +439,11 @@ export default function Sidebar({
             {folderGroups.map(({ folder, feeds: folderFeeds }) => (
               <div key={folder.id} className="mt-1">
                 <div
+                  ref={isHighlighted({ kind: "folder", folderId: folder.id }) ? highlightRef : undefined}
                   className="flex items-center group/folder rounded-md transition-colors"
                   style={{
-                    borderLeft: dropTargetFolderId === folder.id ? "2px solid var(--color-accent)" : "2px solid transparent",
-                    backgroundColor: dropTargetFolderId === folder.id ? "var(--color-bg-secondary)" : "transparent",
+                    borderLeft: (isHighlighted({ kind: "folder", folderId: folder.id }) || dropTargetFolderId === folder.id) ? "2px solid var(--color-accent)" : "2px solid transparent",
+                    backgroundColor: (isHighlighted({ kind: "folder", folderId: folder.id }) || dropTargetFolderId === folder.id) ? "var(--color-bg-secondary)" : "transparent",
                   }}
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -365,7 +464,7 @@ export default function Sidebar({
                     type="button"
                     className="flex-1 flex items-center gap-1.5 px-2 py-1 text-xs font-medium uppercase tracking-wider"
                     style={{ color: "var(--color-text-muted)" }}
-                    onClick={() => toggleFolderCollapsed(folder.id)}
+                    onClick={() => onToggleFolder(folder.id)}
                   >
                     <svg
                       width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"

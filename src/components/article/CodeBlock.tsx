@@ -55,9 +55,10 @@ function detectLanguage(className: string | undefined): string | undefined {
 
 interface CodeBlockProps extends React.ComponentPropsWithoutRef<"code"> {
   node?: Element;
+  isDark?: boolean;
 }
 
-export default function CodeBlock({ className, children, node, ...props }: CodeBlockProps) {
+export default function CodeBlock({ className, children, node, isDark, ...props }: CodeBlockProps) {
   if (node && isInlineCode(node)) {
     return (
       <code className={className} {...props}>
@@ -75,8 +76,9 @@ export default function CodeBlock({ className, children, node, ...props }: CodeB
 
   return (
     <ShikiHighlighter
+      key={isDark ? "dark" : "light"}
       language={lang}
-      theme={{ light: "github-light", dark: "github-dark-dimmed" }}
+      theme={isDark ? "github-dark-dimmed" : "github-light"}
       showLanguage={true}
       addDefaultStyles={false}
     >

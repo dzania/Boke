@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Sidebar from "./components/layout/Sidebar";
 import ArticleList from "./components/layout/ArticleList";
 import ReaderPane from "./components/layout/ReaderPane";
@@ -7,9 +7,11 @@ import KeyboardShortcuts from "./components/ui/KeyboardShortcuts";
 import UpdateBanner from "./components/ui/UpdateBanner";
 import { SIDEBAR_WIDTH, ARTICLE_LIST_WIDTH } from "./lib/constants";
 import { useFeeds, useRefreshAllFeeds, useRefreshFeed } from "./api/feeds";
+import { useFolders } from "./api/folders";
 import { useArticles, useToggleRead, useToggleFavorite, useMarkAllRead, useMarkAllUnread } from "./api/articles";
 import { useKeyboardNav } from "./hooks/useKeyboardNav";
 import { useTheme } from "./hooks/useTheme";
+import { buildSidebarItems } from "./lib/sidebarItems";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
@@ -22,11 +24,13 @@ export default function App() {
   const [showSearch, setShowSearch] = useState(false);
   const [showAddFeed, setShowAddFeed] = useState(false);
   const [articleListVisible, setArticleListVisible] = useState(true);
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<number>>(new Set());
   const readerRef = useRef<HTMLElement | null>(null);
   const hasRefreshed = useRef(false);
 
   const { theme, toggleTheme } = useTheme();
   const { data: feeds } = useFeeds();
+  const { data: folders } = useFolders();
   const { data: articles, isLoading: articlesLoading, error: articlesErr } = useArticles(
     activeFeedId,
     activeFilter === "unread",
@@ -107,19 +111,42 @@ export default function App() {
     setArticleListVisible((v) => !v);
   }, []);
 
-  const { selectedIndex, setSelectedIndex, showShortcuts, setShowShortcuts } = useKeyboardNav({
+  const toggleFolderCollapsed = useCallback((folderId: number) => {
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  }, []);
+
+  const sidebarItems = useMemo(
+    () => buildSidebarItems(feeds ?? [], folders ?? [], collapsedFolders),
+    [feeds, folders, collapsedFolders],
+  );
+
+  const { selectedIndex, setSelectedIndex, focusZone, sidebarIndex, showShortcuts, setShowShortcuts } = useKeyboardNav({
     articles: articles ?? [],
     selectedArticle,
     feeds: feeds ?? [],
     activeFeedId,
+    activeFilter,
     readerRef,
     disabled: showSearch || showAddFeed,
+    sidebarItems,
     onSelectArticle: handleSelectArticle,
     onClearArticle: () => setSelectedArticle(null),
     onSelectFeed: (feedId) => {
       setActiveFeedId(feedId);
+      if (feedId !== null) setActiveFilter("all");
       setSelectedIndex(0);
     },
+    onSelectFilter: (filter) => {
+      setActiveFilter(filter);
+      setActiveFeedId(null);
+      setSelectedIndex(0);
+    },
+    onToggleFolder: toggleFolderCollapsed,
     onToggleRead: (id) => toggleRead.mutate(id),
     onToggleFavorite: (id) => toggleFavorite.mutate(id),
     onOpenInBrowser: (url) => openUrl(url),
@@ -139,16 +166,13 @@ export default function App() {
     setSelectedIndex(0);
   }, [activeFeedId, activeFilter, setSelectedIndex]);
 
-  // Always show article list when no article is selected in the reader
-  const effectiveArticleListVisible = articleListVisible || !selectedArticle;
-
-  const gridColumns = effectiveArticleListVisible
+  const gridColumns = articleListVisible
     ? `${SIDEBAR_WIDTH}px ${ARTICLE_LIST_WIDTH}px 1fr`
     : `${SIDEBAR_WIDTH}px 0px 1fr`;
 
   return (
     <div
-      className="grid h-screen"
+      className="grid h-screen overflow-hidden"
       style={{ gridTemplateColumns: gridColumns }}
     >
       <UpdateBanner />
@@ -170,11 +194,16 @@ export default function App() {
         onOpenAddFeed={() => setShowAddFeed(true)}
         onCloseAddFeed={() => setShowAddFeed(false)}
         onOpenHelp={() => setShowShortcuts(true)}
-        articleListVisible={effectiveArticleListVisible}
+        articleListVisible={articleListVisible}
         onToggleArticleList={handleToggleArticleList}
+        collapsedFolders={collapsedFolders}
+        onToggleFolder={toggleFolderCollapsed}
+        focusZone={focusZone}
+        sidebarIndex={sidebarIndex}
+        sidebarItems={sidebarItems}
       />
       <ArticleList
-        visible={effectiveArticleListVisible}
+        visible={articleListVisible}
         articles={articles ?? []}
         articlesLoading={articlesLoading}
         articlesError={articlesErr ? String(articlesErr) : null}
@@ -187,7 +216,7 @@ export default function App() {
         onMarkAllRead={() => markAllRead.mutate(activeFeedId)}
         onMarkAllUnread={() => markAllUnread.mutate(activeFeedId)}
       />
-      <ReaderPane article={selectedArticle} readerRef={readerRef} onToggleFavorite={(id) => toggleFavorite.mutate(id)} onToggleRead={(id) => toggleRead.mutate(id)} />
+      <ReaderPane article={selectedArticle} readerRef={readerRef} onToggleFavorite={(id) => toggleFavorite.mutate(id)} onToggleRead={(id) => toggleRead.mutate(id)} theme={theme} />
       {showSearch && (
         <SearchBar
           onSelectArticle={handleSelectArticle}

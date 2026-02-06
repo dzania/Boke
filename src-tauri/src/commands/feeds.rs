@@ -2,6 +2,7 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Emitter, State};
 
+use crate::commands::articles::resolve_relative_urls;
 use crate::feed;
 use quick_xml::events::Event;
 use quick_xml::Reader;
@@ -94,7 +95,10 @@ pub async fn add_feed(url: String, pool: State<'_, SqlitePool>) -> Result<FeedWi
     // Insert articles
     for entry in &parsed.entries {
         let published = entry.published.map(|d| d.to_rfc3339());
-        let content = entry.content.as_deref().or(entry.summary.as_deref());
+        let base = if entry.link.is_empty() { &feed_url } else { &entry.link };
+        let content = entry.content.as_deref().or(entry.summary.as_deref())
+            .map(|c| resolve_relative_urls(c, base));
+        let summary = entry.summary.as_deref().map(|s| resolve_relative_urls(s, base));
         let _ = sqlx::query(
             "INSERT OR IGNORE INTO articles (feed_id, guid, title, link, author, summary, content, image_url, published_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -104,8 +108,8 @@ pub async fn add_feed(url: String, pool: State<'_, SqlitePool>) -> Result<FeedWi
         .bind(&entry.title)
         .bind(&entry.link)
         .bind(&entry.author)
-        .bind(&entry.summary)
-        .bind(content)
+        .bind(&summary)
+        .bind(&content)
         .bind(&entry.image_url)
         .bind(&published)
         .execute(pool.inner())
@@ -219,7 +223,10 @@ pub async fn import_opml(path: String, pool: State<'_, SqlitePool>) -> Result<Im
         // Insert articles
         for entry in &parsed.entries {
             let published = entry.published.map(|d| d.to_rfc3339());
-            let content = entry.content.as_deref().or(entry.summary.as_deref());
+            let base = if entry.link.is_empty() { &feed_url } else { &entry.link };
+            let content = entry.content.as_deref().or(entry.summary.as_deref())
+                .map(|c| resolve_relative_urls(c, base));
+            let summary = entry.summary.as_deref().map(|s| resolve_relative_urls(s, base));
             let _ = sqlx::query(
                 "INSERT OR IGNORE INTO articles (feed_id, guid, title, link, author, summary, content, image_url, published_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -229,8 +236,8 @@ pub async fn import_opml(path: String, pool: State<'_, SqlitePool>) -> Result<Im
             .bind(&entry.title)
             .bind(&entry.link)
             .bind(&entry.author)
-            .bind(&entry.summary)
-            .bind(content)
+            .bind(&summary)
+            .bind(&content)
             .bind(&entry.image_url)
             .bind(&published)
             .execute(pool.inner())
@@ -431,7 +438,10 @@ async fn do_refresh(feed_id: i64, feed_url: &str, pool: &SqlitePool) -> Result<i
     let mut new_count: i64 = 0;
     for entry in &parsed.entries {
         let published = entry.published.map(|d| d.to_rfc3339());
-        let content = entry.content.as_deref().or(entry.summary.as_deref());
+        let base = if entry.link.is_empty() { feed_url } else { &entry.link };
+        let content = entry.content.as_deref().or(entry.summary.as_deref())
+            .map(|c| resolve_relative_urls(c, base));
+        let summary = entry.summary.as_deref().map(|s| resolve_relative_urls(s, base));
         let result = sqlx::query(
             "INSERT OR IGNORE INTO articles (feed_id, guid, title, link, author, summary, content, image_url, published_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -441,8 +451,8 @@ async fn do_refresh(feed_id: i64, feed_url: &str, pool: &SqlitePool) -> Result<i
         .bind(&entry.title)
         .bind(&entry.link)
         .bind(&entry.author)
-        .bind(&entry.summary)
-        .bind(content)
+        .bind(&summary)
+        .bind(&content)
         .bind(&entry.image_url)
         .bind(&published)
         .execute(pool)

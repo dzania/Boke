@@ -28,3 +28,4 @@ tokio = { version = "1", features = ["full"] }
 log = "0.4"
 tauri-plugin-updater = "2"
 tauri-plugin-dialog = "2"
+regex = "1.12.3"

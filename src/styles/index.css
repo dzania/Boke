@@ -45,6 +45,7 @@ html, body, #root {
     height: 100%;
     margin: 0;
     padding: 0;
+    overflow: hidden;
     background-color: var(--color-bg-primary);
     color: var(--color-text-primary);
     font-family: 'Inter', 'SF Pro Text', -apple-system, system-ui, sans-serif;

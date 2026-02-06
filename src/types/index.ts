@@ -73,3 +73,8 @@ export interface DiscoveredFeed {
   title: string | null;
   feed_type: string;
 }
+
+export type SidebarItem =
+  | { kind: "filter"; filter: "all" | "unread" | "favourites" }
+  | { kind: "folder"; folderId: number }
+  | { kind: "feed"; feedId: number };

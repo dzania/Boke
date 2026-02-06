@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useFeeds } from "../../api/feeds";
 import { ArticleListSkeleton } from "../ui/Skeleton";
 import type { Article } from "../../types";
@@ -24,8 +25,16 @@ export default function ArticleList({
   visible,
 }: ArticleListProps) {
   const { data: feeds } = useFeeds();
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  if (!visible) return null;
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container || articles.length === 0) return;
+    const el = container.querySelector(`[data-index="${selectedIndex}"]`);
+    if (el) el.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex, articles.length]);
+
+  if (!visible) return <div />;
 
   return (
     <div
@@ -69,7 +78,9 @@ export default function ArticleList({
       )}
 
       <div
+        ref={scrollRef}
         className="flex-1 overflow-y-auto"
+        style={{ overscrollBehavior: "contain" }}
         role="list"
         aria-label="Articles"
       >
@@ -91,6 +102,7 @@ export default function ArticleList({
           articles.map((article, i) => (
             <div
               key={article.id}
+              data-index={i}
               role="listitem"
               aria-current={selectedArticleId === article.id ? "true" : undefined}
               className="flex items-center border-b transition-colors group/article"

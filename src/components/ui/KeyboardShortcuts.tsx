@@ -4,10 +4,12 @@ interface KeyboardShortcutsProps {
 
 const SHORTCUTS = [
   { section: "Navigation", bindings: [
-    { key: "j / ↓", desc: "Next article / scroll down in reader" },
-    { key: "k / ↑", desc: "Previous article / scroll up in reader" },
-    { key: "Enter / o", desc: "Open selected article" },
-    { key: "Escape", desc: "Close reader / dialog" },
+    { key: "h", desc: "Focus sidebar" },
+    { key: "l", desc: "Focus article list" },
+    { key: "j / ↓", desc: "Next item / scroll down in reader" },
+    { key: "k / ↑", desc: "Previous item / scroll up in reader" },
+    { key: "Enter / o", desc: "Open selected article / select sidebar item" },
+    { key: "Escape", desc: "Close reader / exit sidebar / close dialog" },
     { key: "g g", desc: "Jump to top of list" },
     { key: "G", desc: "Jump to bottom of list" },
     { key: "1-9", desc: "Switch to nth feed" },
