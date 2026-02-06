@@ -3,9 +3,10 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { rehypeInlineCodeProperty } from "react-shiki";
-import type { Root, Element } from "hast";
-import { visit } from "unist-util-visit";
+import type { Root, Element, Text } from "hast";
+import { visit, SKIP } from "unist-util-visit";
 import CodeBlock from "./CodeBlock";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 const SVG_TAGS = [
   "svg",
@@ -177,6 +178,129 @@ function rehypeCopyLanguage() {
   };
 }
 
+/**
+ * Social embed detection patterns.
+ * RSS feeds include <blockquote class="bluesky-embed"> (etc.) with a <script>
+ * to load the embed widget. The script is stripped by sanitize, so we detect
+ * the blockquote class and render a styled card instead.
+ */
+const EMBED_PLATFORMS: Array<{
+  className: string;
+  platform: string;
+  label: string;
+  urlPattern: RegExp;
+}> = [
+  { className: "bluesky-embed", platform: "bluesky", label: "Bluesky", urlPattern: /bsky\.app/ },
+  {
+    className: "twitter-tweet",
+    platform: "twitter",
+    label: "X (Twitter)",
+    urlPattern: /(?:twitter|x)\.com/,
+  },
+  {
+    className: "instagram-media",
+    platform: "instagram",
+    label: "Instagram",
+    urlPattern: /instagram\.com/,
+  },
+];
+
+/**
+ * Rehype plugin: detect social-embed elements (both <blockquote> and <div>
+ * with embed classes) and replace them with native embed iframes or styled cards.
+ *
+ * IMPORTANT: must run BEFORE rehypeSanitize so we can read data-bluesky-uri
+ * (which sanitize would strip).
+ */
+function rehypeEmbeds() {
+  return (tree: Root) => {
+    visit(tree, "element", (node: Element) => {
+      if (node.tagName !== "blockquote" && node.tagName !== "div") return;
+
+      const classes = Array.isArray(node.properties?.className)
+        ? (node.properties.className as string[])
+        : typeof node.properties?.className === "string"
+          ? [node.properties.className]
+          : [];
+
+      const match = EMBED_PLATFORMS.find((p) => classes.includes(p.className));
+      if (!match) return;
+
+      // Extract the post URL from the last matching <a>
+      let embedUrl = "";
+      visit(node, "element", (child: Element) => {
+        if (child.tagName === "a" && typeof child.properties?.href === "string") {
+          if (match.urlPattern.test(child.properties.href)) {
+            embedUrl = child.properties.href;
+          }
+        }
+      });
+
+      // Bluesky: use native embed iframe
+      if (match.platform === "bluesky") {
+        let iframeSrc = "";
+
+        // Prefer AT URI from data-bluesky-uri (available before sanitize strips it)
+        const atUri = node.properties?.dataBlueskyUri as string | undefined;
+        if (atUri?.startsWith("at://")) {
+          iframeSrc = `https://embed.bsky.app/embed/${atUri.slice(5)}`;
+        } else if (embedUrl) {
+          // Fallback: construct from post URL
+          const m = embedUrl.match(/bsky\.app\/profile\/([^/?#]+)\/post\/([^/?#]+)/);
+          if (m) {
+            iframeSrc = `https://embed.bsky.app/embed/${m[1]}/app.bsky.feed.post/${m[2]}`;
+          }
+        }
+
+        if (iframeSrc) {
+          node.tagName = "div";
+          node.properties = { className: ["social-embed", "social-embed--bluesky"] };
+          const iframe: Element = {
+            type: "element",
+            tagName: "iframe",
+            properties: {
+              src: iframeSrc,
+              width: "100%",
+              height: "400",
+              frameBorder: "0",
+              style: "border: none;",
+            },
+            children: [],
+          };
+          node.children = [iframe];
+          return SKIP;
+        }
+      }
+
+      // Fallback: styled card with original content
+      node.tagName = "div";
+      node.properties = { className: ["social-embed", `social-embed--${match.platform}`] };
+
+      const contentWrapper: Element = {
+        type: "element",
+        tagName: "div",
+        properties: { className: ["social-embed__content"] },
+        children: [...node.children],
+      };
+
+      node.children = [contentWrapper];
+
+      if (embedUrl) {
+        const linkText: Text = { type: "text", value: `View on ${match.label} \u2192` };
+        const linkEl: Element = {
+          type: "element",
+          tagName: "a",
+          properties: { href: embedUrl, className: ["social-embed__link"] },
+          children: [linkText],
+        };
+        node.children.push(linkEl);
+      }
+
+      return SKIP;
+    });
+  };
+}
+
 interface ArticleContentProps {
   content: string;
   theme: "light" | "dark";
@@ -199,6 +323,7 @@ export default function ArticleContent({ content, theme }: ArticleContentProps) 
       remarkPlugins={[remarkGfm]}
       rehypePlugins={[
         rehypeRaw,
+        rehypeEmbeds,
         [rehypeSanitize, sanitizeSchema],
         rehypeCleanCodeBlocks,
         rehypeCopyLanguage,
@@ -207,6 +332,27 @@ export default function ArticleContent({ content, theme }: ArticleContentProps) 
       components={{
         code: (props) => <CodeBlock {...props} isDark={isDark} />,
         img: ({ node: _, ...props }) => <img loading="lazy" {...props} />,
+        a: ({ node: _, children, href, ...props }) => {
+          if (href && /^https?:\/\//.test(href)) {
+            return (
+              <a
+                {...props}
+                href={href}
+                onClick={(e) => {
+                  e.preventDefault();
+                  openUrl(href);
+                }}
+              >
+                {children}
+              </a>
+            );
+          }
+          return (
+            <a href={href} {...props}>
+              {children}
+            </a>
+          );
+        },
       }}
     >
       {dedentHtml(content)}

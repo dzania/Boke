@@ -202,6 +202,72 @@ body,
   background-color: var(--color-bg-secondary);
 }
 
+/* Social embed cards (Bluesky, Twitter, Instagram) */
+.reader-content .social-embed {
+  margin: 1.5rem 0;
+  overflow: hidden;
+}
+
+.reader-content .social-embed iframe {
+  width: 100%;
+  border: none;
+  border-radius: 0.5rem;
+}
+
+/* Fallback card for platforms without native iframe embed */
+.reader-content .social-embed__content {
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: var(--color-bg-secondary);
+}
+
+.reader-content .social-embed--twitter .social-embed__content {
+  border-left: 3px solid #1d9bf0;
+}
+
+.reader-content .social-embed--instagram .social-embed__content {
+  border-left: 3px solid #e1306c;
+}
+
+.reader-content .social-embed__content p {
+  margin-bottom: 0.5rem;
+}
+
+.reader-content .social-embed__content p:last-child {
+  margin-bottom: 0;
+}
+
+.reader-content .social-embed__content img {
+  max-width: 280px;
+  max-height: 280px;
+  border-radius: 0.5rem;
+  margin: 0.5rem 0;
+  object-fit: cover;
+}
+
+.reader-content .social-embed__link {
+  display: block;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+
+.reader-content .social-embed__link:hover {
+  color: var(--color-accent);
+}
+
+/* Responsive iframes (YouTube, etc.) */
+.reader-content iframe {
+  max-width: 100%;
+  border: none;
+  border-radius: 0.5rem;
+  margin: 1rem 0;
+}
+
 /* Inline code */
 .reader-content code:not(pre code) {
   background-color: var(--color-bg-secondary);
