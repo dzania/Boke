@@ -60,13 +60,13 @@ pub async fn discover(url: &str) -> Result<Vec<DiscoveredFeed>, FeedError> {
             let link_type = element.value().attr("type").unwrap_or("");
             let href = element.value().attr("href").unwrap_or("");
 
-            if (link_type.contains("rss") || link_type.contains("atom") || link_type.contains("feed"))
+            if (link_type.contains("rss")
+                || link_type.contains("atom")
+                || link_type.contains("feed"))
                 && !href.is_empty()
             {
                 let resolved = resolve_url(&base_url, href);
-                found.push(DiscoveredFeed {
-                    url: resolved,
-                });
+                found.push(DiscoveredFeed { url: resolved });
             }
         }
         found
@@ -88,9 +88,7 @@ pub async fn discover(url: &str) -> Result<Vec<DiscoveredFeed>, FeedError> {
                     .unwrap_or("")
                     .to_lowercase();
                 if is_feed_content_type(&ct) {
-                    feeds.push(DiscoveredFeed {
-                        url: candidate,
-                    });
+                    feeds.push(DiscoveredFeed { url: candidate });
                     return Ok(feeds);
                 }
             }
@@ -107,10 +105,7 @@ pub async fn discover(url: &str) -> Result<Vec<DiscoveredFeed>, FeedError> {
 }
 
 fn is_feed_content_type(ct: &str) -> bool {
-    ct.contains("xml")
-        || ct.contains("rss")
-        || ct.contains("atom")
-        || ct.contains("feed")
+    ct.contains("xml") || ct.contains("rss") || ct.contains("atom") || ct.contains("feed")
 }
 
 fn looks_like_feed(body: &str) -> bool {

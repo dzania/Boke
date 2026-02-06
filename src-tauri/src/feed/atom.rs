@@ -29,7 +29,9 @@ pub fn parse(xml: &[u8], feed_url: &str) -> Result<Feed, FeedError> {
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
-                let local = std::str::from_utf8(e.local_name().as_ref()).unwrap_or("").to_string();
+                let local = std::str::from_utf8(e.local_name().as_ref())
+                    .unwrap_or("")
+                    .to_string();
 
                 match local.as_str() {
                     "entry" if !in_entry => {
@@ -58,7 +60,8 @@ pub fn parse(xml: &[u8], feed_url: &str) -> Result<Feed, FeedError> {
                             if let Some(ref mut entry) = current_entry {
                                 for attr in e.attributes().flatten() {
                                     if attr.key.as_ref() == b"term" {
-                                        let val = attr.unescape_value().unwrap_or_default().to_string();
+                                        let val =
+                                            attr.unescape_value().unwrap_or_default().to_string();
                                         if !val.is_empty() {
                                             entry.categories.push(val);
                                         }
@@ -73,7 +76,9 @@ pub fn parse(xml: &[u8], feed_url: &str) -> Result<Feed, FeedError> {
                 current_tag = local;
             }
             Ok(Event::Empty(ref e)) => {
-                let local = std::str::from_utf8(e.local_name().as_ref()).unwrap_or("").to_string();
+                let local = std::str::from_utf8(e.local_name().as_ref())
+                    .unwrap_or("")
+                    .to_string();
                 match local.as_str() {
                     "link" => {
                         extract_link(e, &mut feed, &mut current_entry, in_entry);
@@ -83,7 +88,8 @@ pub fn parse(xml: &[u8], feed_url: &str) -> Result<Feed, FeedError> {
                             if let Some(ref mut entry) = current_entry {
                                 for attr in e.attributes().flatten() {
                                     if attr.key.as_ref() == b"term" {
-                                        let val = attr.unescape_value().unwrap_or_default().to_string();
+                                        let val =
+                                            attr.unescape_value().unwrap_or_default().to_string();
                                         if !val.is_empty() {
                                             entry.categories.push(val);
                                         }
@@ -96,7 +102,9 @@ pub fn parse(xml: &[u8], feed_url: &str) -> Result<Feed, FeedError> {
                 }
             }
             Ok(Event::End(ref e)) => {
-                let local = std::str::from_utf8(e.local_name().as_ref()).unwrap_or("").to_string();
+                let local = std::str::from_utf8(e.local_name().as_ref())
+                    .unwrap_or("")
+                    .to_string();
                 match local.as_str() {
                     "entry" if in_entry => {
                         if let Some(mut entry) = current_entry.take() {
@@ -119,13 +127,27 @@ pub fn parse(xml: &[u8], feed_url: &str) -> Result<Feed, FeedError> {
             Ok(Event::CData(ref e)) => {
                 let text = std::str::from_utf8(e.as_ref()).unwrap_or("").to_string();
                 if !text.is_empty() {
-                    apply_text(&mut feed, &current_tag, &text, in_entry, in_author, &mut current_entry);
+                    apply_text(
+                        &mut feed,
+                        &current_tag,
+                        &text,
+                        in_entry,
+                        in_author,
+                        &mut current_entry,
+                    );
                 }
             }
             Ok(Event::Text(ref e)) => {
                 let text = e.unescape().unwrap_or_default().to_string();
                 if !text.is_empty() {
-                    apply_text(&mut feed, &current_tag, &text, in_entry, in_author, &mut current_entry);
+                    apply_text(
+                        &mut feed,
+                        &current_tag,
+                        &text,
+                        in_entry,
+                        in_author,
+                        &mut current_entry,
+                    );
                 }
             }
             Ok(Event::Eof) => break,

@@ -59,11 +59,7 @@ pub fn parse_date(input: &str) -> Option<DateTime<Utc>> {
 
     // 5. Date-only fallback
     if let Ok(naive_date) = chrono::NaiveDate::parse_from_str(input, "%Y-%m-%d") {
-        return Some(
-            naive_date
-                .and_hms_opt(0, 0, 0)?
-                .and_utc(),
-        );
+        return Some(naive_date.and_hms_opt(0, 0, 0)?.and_utc());
     }
 
     None

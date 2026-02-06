@@ -75,16 +75,21 @@ pub async fn get_article(article_id: i64, pool: State<'_, SqlitePool>) -> Result
 
 #[tauri::command]
 pub async fn toggle_read(article_id: i64, pool: State<'_, SqlitePool>) -> Result<(), String> {
-    sqlx::query("UPDATE articles SET is_read = CASE WHEN is_read = 0 THEN 1 ELSE 0 END WHERE id = ?")
-        .bind(article_id)
-        .execute(pool.inner())
-        .await
-        .map_err(|e| e.to_string())?;
+    sqlx::query(
+        "UPDATE articles SET is_read = CASE WHEN is_read = 0 THEN 1 ELSE 0 END WHERE id = ?",
+    )
+    .bind(article_id)
+    .execute(pool.inner())
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn mark_all_read(feed_id: Option<i64>, pool: State<'_, SqlitePool>) -> Result<(), String> {
+pub async fn mark_all_read(
+    feed_id: Option<i64>,
+    pool: State<'_, SqlitePool>,
+) -> Result<(), String> {
     if let Some(fid) = feed_id {
         sqlx::query("UPDATE articles SET is_read = 1 WHERE feed_id = ? AND is_read = 0")
             .bind(fid)
@@ -101,7 +106,10 @@ pub async fn mark_all_read(feed_id: Option<i64>, pool: State<'_, SqlitePool>) ->
 }
 
 #[tauri::command]
-pub async fn mark_all_unread(feed_id: Option<i64>, pool: State<'_, SqlitePool>) -> Result<(), String> {
+pub async fn mark_all_unread(
+    feed_id: Option<i64>,
+    pool: State<'_, SqlitePool>,
+) -> Result<(), String> {
     if let Some(fid) = feed_id {
         sqlx::query("UPDATE articles SET is_read = 0 WHERE feed_id = ? AND is_read = 1")
             .bind(fid)
@@ -137,7 +145,11 @@ pub async fn toggle_favorite(article_id: i64, pool: State<'_, SqlitePool>) -> Re
 }
 
 #[tauri::command]
-pub async fn search_articles(query: String, limit: i64, pool: State<'_, SqlitePool>) -> Result<Vec<Article>, String> {
+pub async fn search_articles(
+    query: String,
+    limit: i64,
+    pool: State<'_, SqlitePool>,
+) -> Result<Vec<Article>, String> {
     sqlx::query_as::<_, Article>(&format!(
         "SELECT {ARTICLE_COLUMNS} FROM articles a \
          JOIN articles_fts fts ON a.id = fts.rowid \
@@ -240,8 +252,7 @@ fn extract_article_content(html: &str) -> String {
 fn clean_html(html: &str) -> String {
     let doc = Html::parse_fragment(html);
     let noise_tags = [
-        "nav", "footer", "header", "aside", "script", "style", "noscript",
-        "iframe", "form", "svg",
+        "nav", "footer", "header", "aside", "script", "style", "noscript", "iframe", "form", "svg",
     ];
 
     let mut output = html.to_string();

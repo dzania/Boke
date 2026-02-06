@@ -31,8 +31,12 @@ pub fn parse(xml: &[u8], feed_url: &str) -> Result<Feed, FeedError> {
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
-                let local = std::str::from_utf8(e.local_name().as_ref()).unwrap_or("").to_string();
-                let full = std::str::from_utf8(e.name().as_ref()).unwrap_or("").to_string();
+                let local = std::str::from_utf8(e.local_name().as_ref())
+                    .unwrap_or("")
+                    .to_string();
+                let full = std::str::from_utf8(e.name().as_ref())
+                    .unwrap_or("")
+                    .to_string();
 
                 match local.as_str() {
                     "channel" => in_channel = true,
@@ -77,7 +81,9 @@ pub fn parse(xml: &[u8], feed_url: &str) -> Result<Feed, FeedError> {
                 current_ns_tag = full;
             }
             Ok(Event::End(ref e)) => {
-                let local = std::str::from_utf8(e.local_name().as_ref()).unwrap_or("").to_string();
+                let local = std::str::from_utf8(e.local_name().as_ref())
+                    .unwrap_or("")
+                    .to_string();
                 match local.as_str() {
                     "channel" => in_channel = false,
                     "item" if in_item => {
@@ -102,13 +108,27 @@ pub fn parse(xml: &[u8], feed_url: &str) -> Result<Feed, FeedError> {
             Ok(Event::CData(ref e)) => {
                 let text = std::str::from_utf8(e.as_ref()).unwrap_or("").to_string();
                 if !text.is_empty() {
-                    apply_text(&mut feed, &current_tag, &current_ns_tag, &text, in_item, &mut current_entry);
+                    apply_text(
+                        &mut feed,
+                        &current_tag,
+                        &current_ns_tag,
+                        &text,
+                        in_item,
+                        &mut current_entry,
+                    );
                 }
             }
             Ok(Event::Text(ref e)) => {
                 let text = e.unescape().unwrap_or_default().to_string();
                 if !text.is_empty() {
-                    apply_text(&mut feed, &current_tag, &current_ns_tag, &text, in_item, &mut current_entry);
+                    apply_text(
+                        &mut feed,
+                        &current_tag,
+                        &current_ns_tag,
+                        &text,
+                        in_item,
+                        &mut current_entry,
+                    );
                 }
             }
             Ok(Event::Eof) => break,
