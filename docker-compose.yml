@@ -1,0 +1,46 @@
+services:
+  # SQLite variant (simple, single-file database)
+  boke-sqlite:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=sqlite:///data/boke.db
+      - BIND_ADDRESS=0.0.0.0:8080
+      - RUST_LOG=info
+    volumes:
+      - boke-data:/data
+    restart: unless-stopped
+
+  # PostgreSQL variant (production-ready)
+  boke-postgres:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgres://boke:${POSTGRES_PASSWORD:-boke123}@db:5432/boke
+      - BIND_ADDRESS=0.0.0.0:8080
+      - RUST_LOG=info
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      - POSTGRES_USER=boke
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-boke123}
+      - POSTGRES_DB=boke
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U boke"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  boke-data:
+  postgres-data:
