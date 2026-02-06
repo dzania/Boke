@@ -1,5 +1,5 @@
-use crate::error::ApiError;
 use crate::AppState;
+use crate::error::ApiError;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
