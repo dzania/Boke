@@ -54,11 +54,25 @@ export default function SearchBar({ onSelectArticle, onClose }: SearchBarProps) 
     >
       <div
         className="w-[560px] rounded-lg shadow-xl overflow-hidden"
-        style={{ backgroundColor: "var(--color-bg-primary)", border: "1px solid var(--color-border)" }}
+        style={{
+          backgroundColor: "var(--color-bg-primary)",
+          border: "1px solid var(--color-border)",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: "var(--color-text-muted)", flexShrink: 0 }}>
+        <div
+          className="flex items-center gap-2 px-4 py-3 border-b"
+          style={{ borderColor: "var(--color-border)" }}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            style={{ color: "var(--color-text-muted)", flexShrink: 0 }}
+          >
             <circle cx="7" cy="7" r="5" />
             <path d="M11 11l3 3" />
           </svg>
@@ -74,7 +88,10 @@ export default function SearchBar({ onSelectArticle, onClose }: SearchBarProps) 
           />
           <kbd
             className="text-xs px-1.5 py-0.5 rounded"
-            style={{ backgroundColor: "var(--color-bg-secondary)", color: "var(--color-text-muted)" }}
+            style={{
+              backgroundColor: "var(--color-bg-secondary)",
+              color: "var(--color-text-muted)",
+            }}
           >
             esc
           </kbd>
@@ -88,7 +105,8 @@ export default function SearchBar({ onSelectArticle, onClose }: SearchBarProps) 
                 type="button"
                 className="w-full text-left px-4 py-2.5 transition-colors"
                 style={{
-                  backgroundColor: i === selectedIndex ? "var(--color-bg-secondary)" : "transparent",
+                  backgroundColor:
+                    i === selectedIndex ? "var(--color-bg-secondary)" : "transparent",
                 }}
                 onClick={() => {
                   onSelectArticle(article);

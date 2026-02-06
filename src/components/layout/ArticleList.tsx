@@ -19,9 +19,17 @@ interface ArticleListProps {
 }
 
 export default function ArticleList({
-  articles, articlesLoading, articlesError, refreshError,
-  selectedArticleId, selectedIndex, onSelectArticle,
-  onToggleFavorite, onToggleRead, onMarkAllRead, onMarkAllUnread,
+  articles,
+  articlesLoading,
+  articlesError,
+  refreshError,
+  selectedArticleId,
+  selectedIndex,
+  onSelectArticle,
+  onToggleFavorite,
+  onToggleRead,
+  onMarkAllRead,
+  onMarkAllUnread,
   visible,
 }: ArticleListProps) {
   const { data: feeds } = useFeeds();
@@ -58,7 +66,14 @@ export default function ArticleList({
             style={{ color: "var(--color-text-muted)" }}
             onClick={onMarkAllRead}
           >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
               <path d="M2 8.5l4 4 8-8" />
             </svg>
           </button>
@@ -70,7 +85,14 @@ export default function ArticleList({
             style={{ color: "var(--color-text-muted)" }}
             onClick={onMarkAllUnread}
           >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
               <circle cx="8" cy="8" r="3" fill="currentColor" stroke="none" />
             </svg>
           </button>
@@ -86,12 +108,26 @@ export default function ArticleList({
       >
         {/* Error banners */}
         {refreshError && (
-          <div className="px-3 py-2 text-xs border-b" style={{ backgroundColor: "rgba(239,68,68,0.1)", borderColor: "var(--color-border)", color: "#ef4444" }}>
+          <div
+            className="px-3 py-2 text-xs border-b"
+            style={{
+              backgroundColor: "rgba(239,68,68,0.1)",
+              borderColor: "var(--color-border)",
+              color: "#ef4444",
+            }}
+          >
             Refresh failed: {refreshError}
           </div>
         )}
         {articlesError && (
-          <div className="px-3 py-2 text-xs border-b" style={{ backgroundColor: "rgba(239,68,68,0.1)", borderColor: "var(--color-border)", color: "#ef4444" }}>
+          <div
+            className="px-3 py-2 text-xs border-b"
+            style={{
+              backgroundColor: "rgba(239,68,68,0.1)",
+              borderColor: "var(--color-border)",
+              color: "#ef4444",
+            }}
+          >
             Failed to load articles
           </div>
         )}
@@ -114,9 +150,10 @@ export default function ArticleList({
                     : i === selectedIndex
                       ? "var(--color-bg-secondary)"
                       : "transparent",
-                borderLeft: i === selectedIndex && selectedArticleId !== article.id
-                  ? "2px solid var(--color-accent)"
-                  : "2px solid transparent",
+                borderLeft:
+                  i === selectedIndex && selectedArticleId !== article.id
+                    ? "2px solid var(--color-accent)"
+                    : "2px solid transparent",
               }}
             >
               <button
@@ -141,7 +178,10 @@ export default function ArticleList({
                     >
                       {article.title}
                     </p>
-                    <p className="text-xs mt-0.5 truncate" style={{ color: "var(--color-text-muted)" }}>
+                    <p
+                      className="text-xs mt-0.5 truncate"
+                      style={{ color: "var(--color-text-muted)" }}
+                    >
                       {article.feed_title}
                       {article.published_at && ` · ${formatRelativeTime(article.published_at)}`}
                     </p>
@@ -161,11 +201,25 @@ export default function ArticleList({
                   }}
                 >
                   {article.is_read ? (
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    >
                       <circle cx="8" cy="8" r="5.5" />
                     </svg>
                   ) : (
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    >
                       <circle cx="8" cy="8" r="5.5" />
                       <path d="M5.5 8l2 2 3.5-3.5" />
                     </svg>
@@ -184,7 +238,14 @@ export default function ArticleList({
                     onToggleFavorite(article.id);
                   }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill={article.is_favorite ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill={article.is_favorite ? "currentColor" : "none"}
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  >
                     <path d="M8 1.5l2.1 4.2 4.7.7-3.4 3.3.8 4.7L8 12l-4.2 2.4.8-4.7L1.2 6.4l4.7-.7z" />
                   </svg>
                 </button>
@@ -192,8 +253,19 @@ export default function ArticleList({
             </div>
           ))
         ) : (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4" style={{ color: "var(--color-text-muted)" }}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mb-2 opacity-30">
+          <div
+            className="flex flex-col items-center justify-center h-full text-center px-4"
+            style={{ color: "var(--color-text-muted)" }}
+          >
+            <svg
+              width="28"
+              height="28"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              className="mb-2 opacity-30"
+            >
               <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
               <polyline points="14 2 14 8 20 8" />
               <line x1="16" y1="13" x2="8" y2="13" />
@@ -204,7 +276,14 @@ export default function ArticleList({
             </p>
             {feeds && feeds.length > 0 && (
               <p className="text-xs mt-1">
-                Press <kbd className="px-1 py-0.5 rounded text-[10px]" style={{ backgroundColor: "var(--color-bg-secondary)" }}>R</kbd> to refresh
+                Press{" "}
+                <kbd
+                  className="px-1 py-0.5 rounded text-[10px]"
+                  style={{ backgroundColor: "var(--color-bg-secondary)" }}
+                >
+                  R
+                </kbd>{" "}
+                to refresh
               </p>
             )}
           </div>

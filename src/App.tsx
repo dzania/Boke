@@ -8,13 +8,23 @@ import UpdateBanner from "./components/ui/UpdateBanner";
 import { SIDEBAR_WIDTH, ARTICLE_LIST_WIDTH } from "./lib/constants";
 import { useFeeds, useRefreshAllFeeds, useRefreshFeed } from "./api/feeds";
 import { useFolders } from "./api/folders";
-import { useArticles, useToggleRead, useToggleFavorite, useMarkAllRead, useMarkAllUnread } from "./api/articles";
+import {
+  useArticles,
+  useToggleRead,
+  useToggleFavorite,
+  useMarkAllRead,
+  useMarkAllUnread,
+} from "./api/articles";
 import { useKeyboardNav } from "./hooks/useKeyboardNav";
 import { useTheme } from "./hooks/useTheme";
 import { buildSidebarItems } from "./lib/sidebarItems";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
-import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from "@tauri-apps/plugin-notification";
 import type { Article } from "./types";
 
 export default function App() {
@@ -31,11 +41,11 @@ export default function App() {
   const { theme, toggleTheme } = useTheme();
   const { data: feeds } = useFeeds();
   const { data: folders } = useFolders();
-  const { data: articles, isLoading: articlesLoading, error: articlesErr } = useArticles(
-    activeFeedId,
-    activeFilter === "unread",
-    activeFilter === "favourites",
-  );
+  const {
+    data: articles,
+    isLoading: articlesLoading,
+    error: articlesErr,
+  } = useArticles(activeFeedId, activeFilter === "unread", activeFilter === "favourites");
   const refreshAll = useRefreshAllFeeds();
   const refreshFeed = useRefreshFeed();
   const toggleRead = useToggleRead();
@@ -66,7 +76,9 @@ export default function App() {
         });
       }
     });
-    return () => { unlisten.then((fn) => fn()); };
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, []);
 
   // Listen for tray refresh event
@@ -74,7 +86,9 @@ export default function App() {
     const unlisten = listen("tray-refresh", () => {
       refreshAll.mutate();
     });
-    return () => { unlisten.then((fn) => fn()); };
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, [refreshAll]);
 
   // Cmd+K / Ctrl+K / "/" for search
@@ -88,8 +102,11 @@ export default function App() {
       // "/" opens search when not in an input/dialog
       if (
         e.key === "/" &&
-        !e.metaKey && !e.ctrlKey && !e.shiftKey &&
-        !showSearch && !showAddFeed &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.shiftKey &&
+        !showSearch &&
+        !showAddFeed &&
         !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
       ) {
         e.preventDefault();
@@ -100,12 +117,15 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showSearch, showAddFeed]);
 
-  const handleSelectArticle = useCallback((article: Article) => {
-    setSelectedArticle(article);
-    if (!article.is_read) {
-      toggleRead.mutate(article.id);
-    }
-  }, [toggleRead]);
+  const handleSelectArticle = useCallback(
+    (article: Article) => {
+      setSelectedArticle(article);
+      if (!article.is_read) {
+        toggleRead.mutate(article.id);
+      }
+    },
+    [toggleRead]
+  );
 
   const handleToggleArticleList = useCallback(() => {
     setArticleListVisible((v) => !v);
@@ -122,10 +142,17 @@ export default function App() {
 
   const sidebarItems = useMemo(
     () => buildSidebarItems(feeds ?? [], folders ?? [], collapsedFolders),
-    [feeds, folders, collapsedFolders],
+    [feeds, folders, collapsedFolders]
   );
 
-  const { selectedIndex, setSelectedIndex, focusZone, sidebarIndex, showShortcuts, setShowShortcuts } = useKeyboardNav({
+  const {
+    selectedIndex,
+    setSelectedIndex,
+    focusZone,
+    sidebarIndex,
+    showShortcuts,
+    setShowShortcuts,
+  } = useKeyboardNav({
     articles: articles ?? [],
     selectedArticle,
     feeds: feeds ?? [],
@@ -171,10 +198,7 @@ export default function App() {
     : `${SIDEBAR_WIDTH}px 0px 1fr`;
 
   return (
-    <div
-      className="grid h-screen overflow-hidden"
-      style={{ gridTemplateColumns: gridColumns }}
-    >
+    <div className="grid h-screen overflow-hidden" style={{ gridTemplateColumns: gridColumns }}>
       <UpdateBanner />
       <Sidebar
         theme={theme}
@@ -216,16 +240,17 @@ export default function App() {
         onMarkAllRead={() => markAllRead.mutate(activeFeedId)}
         onMarkAllUnread={() => markAllUnread.mutate(activeFeedId)}
       />
-      <ReaderPane article={selectedArticle} readerRef={readerRef} onToggleFavorite={(id) => toggleFavorite.mutate(id)} onToggleRead={(id) => toggleRead.mutate(id)} theme={theme} />
+      <ReaderPane
+        article={selectedArticle}
+        readerRef={readerRef}
+        onToggleFavorite={(id) => toggleFavorite.mutate(id)}
+        onToggleRead={(id) => toggleRead.mutate(id)}
+        theme={theme}
+      />
       {showSearch && (
-        <SearchBar
-          onSelectArticle={handleSelectArticle}
-          onClose={() => setShowSearch(false)}
-        />
+        <SearchBar onSelectArticle={handleSelectArticle} onClose={() => setShowSearch(false)} />
       )}
-      {showShortcuts && (
-        <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />
-      )}
+      {showShortcuts && <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />}
     </div>
   );
 }

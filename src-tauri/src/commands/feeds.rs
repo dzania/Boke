@@ -95,10 +95,20 @@ pub async fn add_feed(url: String, pool: State<'_, SqlitePool>) -> Result<FeedWi
     // Insert articles
     for entry in &parsed.entries {
         let published = entry.published.map(|d| d.to_rfc3339());
-        let base = if entry.link.is_empty() { &feed_url } else { &entry.link };
-        let content = entry.content.as_deref().or(entry.summary.as_deref())
+        let base = if entry.link.is_empty() {
+            &feed_url
+        } else {
+            &entry.link
+        };
+        let content = entry
+            .content
+            .as_deref()
+            .or(entry.summary.as_deref())
             .map(|c| resolve_relative_urls(c, base));
-        let summary = entry.summary.as_deref().map(|s| resolve_relative_urls(s, base));
+        let summary = entry
+            .summary
+            .as_deref()
+            .map(|s| resolve_relative_urls(s, base));
         let _ = sqlx::query(
             "INSERT OR IGNORE INTO articles (feed_id, guid, title, link, author, summary, content, image_url, published_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -225,10 +235,20 @@ pub async fn import_opml(
         // Insert articles
         for entry in &parsed.entries {
             let published = entry.published.map(|d| d.to_rfc3339());
-            let base = if entry.link.is_empty() { &feed_url } else { &entry.link };
-            let content = entry.content.as_deref().or(entry.summary.as_deref())
+            let base = if entry.link.is_empty() {
+                &feed_url
+            } else {
+                &entry.link
+            };
+            let content = entry
+                .content
+                .as_deref()
+                .or(entry.summary.as_deref())
                 .map(|c| resolve_relative_urls(c, base));
-            let summary = entry.summary.as_deref().map(|s| resolve_relative_urls(s, base));
+            let summary = entry
+                .summary
+                .as_deref()
+                .map(|s| resolve_relative_urls(s, base));
             let _ = sqlx::query(
                 "INSERT OR IGNORE INTO articles (feed_id, guid, title, link, author, summary, content, image_url, published_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -448,10 +468,20 @@ async fn do_refresh(feed_id: i64, feed_url: &str, pool: &SqlitePool) -> Result<i
     let mut new_count: i64 = 0;
     for entry in &parsed.entries {
         let published = entry.published.map(|d| d.to_rfc3339());
-        let base = if entry.link.is_empty() { feed_url } else { &entry.link };
-        let content = entry.content.as_deref().or(entry.summary.as_deref())
+        let base = if entry.link.is_empty() {
+            feed_url
+        } else {
+            &entry.link
+        };
+        let content = entry
+            .content
+            .as_deref()
+            .or(entry.summary.as_deref())
             .map(|c| resolve_relative_urls(c, base));
-        let summary = entry.summary.as_deref().map(|s| resolve_relative_urls(s, base));
+        let summary = entry
+            .summary
+            .as_deref()
+            .map(|s| resolve_relative_urls(s, base));
         let result = sqlx::query(
             "INSERT OR IGNORE INTO articles (feed_id, guid, title, link, author, summary, content, image_url, published_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",

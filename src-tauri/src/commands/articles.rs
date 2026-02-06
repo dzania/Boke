@@ -323,21 +323,30 @@ mod tests {
     fn resolve_root_relative_src() {
         let html = r#"<img src="/images/photo.jpg">"#;
         let result = resolve_relative_urls(html, "https://example.com/blog/post");
-        assert_eq!(result, r#"<img src="https://example.com/images/photo.jpg">"#);
+        assert_eq!(
+            result,
+            r#"<img src="https://example.com/images/photo.jpg">"#
+        );
     }
 
     #[test]
     fn resolve_path_relative_src() {
         let html = r#"<img src="images/photo.jpg">"#;
         let result = resolve_relative_urls(html, "https://example.com/blog/post");
-        assert_eq!(result, r#"<img src="https://example.com/blog/images/photo.jpg">"#);
+        assert_eq!(
+            result,
+            r#"<img src="https://example.com/blog/images/photo.jpg">"#
+        );
     }
 
     #[test]
     fn resolve_parent_relative_src() {
         let html = r#"<img src="../images/photo.jpg">"#;
         let result = resolve_relative_urls(html, "https://example.com/blog/post/article");
-        assert_eq!(result, r#"<img src="https://example.com/blog/images/photo.jpg">"#);
+        assert_eq!(
+            result,
+            r#"<img src="https://example.com/blog/images/photo.jpg">"#
+        );
     }
 
     #[test]
@@ -403,7 +412,10 @@ mod tests {
     fn resolve_poster_attribute() {
         let html = r#"<video poster="/thumb.jpg"></video>"#;
         let result = resolve_relative_urls(html, "https://example.com/videos/v1");
-        assert_eq!(result, r#"<video poster="https://example.com/thumb.jpg"></video>"#);
+        assert_eq!(
+            result,
+            r#"<video poster="https://example.com/thumb.jpg"></video>"#
+        );
     }
 
     #[test]
