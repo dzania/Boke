@@ -1,0 +1,27 @@
+[package]
+name = "boke-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Core library for Boke RSS reader - shared between desktop and server"
+
+[features]
+default = ["sqlite"]
+sqlite = ["sqlx/sqlite"]
+postgres = ["sqlx/postgres"]
+
+[dependencies]
+# Workspace dependencies
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+quick-xml.workspace = true
+scraper.workspace = true
+chrono.workspace = true
+url.workspace = true
+log.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true

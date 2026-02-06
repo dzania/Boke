@@ -15,7 +15,13 @@ interface ReaderPaneProps {
   theme: "light" | "dark";
 }
 
-export default function ReaderPane({ article, readerRef, onToggleFavorite, onToggleRead, theme }: ReaderPaneProps) {
+export default function ReaderPane({
+  article,
+  readerRef,
+  onToggleFavorite,
+  onToggleRead,
+  theme,
+}: ReaderPaneProps) {
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [fetching, setFetching] = useState(false);
 
@@ -55,13 +61,42 @@ export default function ReaderPane({ article, readerRef, onToggleFavorite, onTog
           className="flex flex-col items-center justify-center h-full text-center px-4"
           style={{ color: "var(--color-text-muted)" }}
         >
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="mb-4 opacity-20">
+          <svg
+            width="48"
+            height="48"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1"
+            className="mb-4 opacity-20"
+          >
             <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z" />
             <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" />
           </svg>
           <p className="text-base font-medium">Select an article to read</p>
           <p className="text-sm mt-1 opacity-60">
-            Use <kbd className="px-1.5 py-0.5 rounded text-xs" style={{ backgroundColor: "var(--color-bg-secondary)" }}>j</kbd>/<kbd className="px-1.5 py-0.5 rounded text-xs" style={{ backgroundColor: "var(--color-bg-secondary)" }}>k</kbd> to navigate, <kbd className="px-1.5 py-0.5 rounded text-xs" style={{ backgroundColor: "var(--color-bg-secondary)" }}>Enter</kbd> to open
+            Use{" "}
+            <kbd
+              className="px-1.5 py-0.5 rounded text-xs"
+              style={{ backgroundColor: "var(--color-bg-secondary)" }}
+            >
+              j
+            </kbd>
+            /
+            <kbd
+              className="px-1.5 py-0.5 rounded text-xs"
+              style={{ backgroundColor: "var(--color-bg-secondary)" }}
+            >
+              k
+            </kbd>{" "}
+            to navigate,{" "}
+            <kbd
+              className="px-1.5 py-0.5 rounded text-xs"
+              style={{ backgroundColor: "var(--color-bg-secondary)" }}
+            >
+              Enter
+            </kbd>{" "}
+            to open
           </p>
         </div>
       </main>
@@ -92,11 +127,25 @@ export default function ReaderPane({ article, readerRef, onToggleFavorite, onTog
               onClick={() => onToggleRead(article.id)}
             >
               {article.is_read ? (
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                >
                   <circle cx="8" cy="8" r="5.5" />
                 </svg>
               ) : (
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                >
                   <circle cx="8" cy="8" r="5.5" />
                   <path d="M5.5 8l2 2 3.5-3.5" />
                 </svg>
@@ -106,11 +155,20 @@ export default function ReaderPane({ article, readerRef, onToggleFavorite, onTog
               type="button"
               aria-label={article.is_favorite ? "Remove from favourites" : "Add to favourites"}
               className="p-1.5 rounded-md hover:opacity-80 transition-opacity"
-              style={{ color: article.is_favorite ? "var(--color-accent)" : "var(--color-text-secondary)" }}
+              style={{
+                color: article.is_favorite ? "var(--color-accent)" : "var(--color-text-secondary)",
+              }}
               title={article.is_favorite ? "Remove from favourites" : "Add to favourites"}
               onClick={() => onToggleFavorite(article.id)}
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill={article.is_favorite ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill={article.is_favorite ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
                 <path d="M8 1.5l2.1 4.2 4.7.7-3.4 3.3.8 4.7L8 12l-4.2 2.4.8-4.7L1.2 6.4l4.7-.7z" />
               </svg>
             </button>
@@ -123,7 +181,14 @@ export default function ReaderPane({ article, readerRef, onToggleFavorite, onTog
                 title="Open in browser"
                 onClick={() => openUrl(article.link!)}
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                >
                   <path d="M12 9v4a1 1 0 01-1 1H3a1 1 0 01-1-1V5a1 1 0 011-1h4M9 2h5v5M7 9l7-7" />
                 </svg>
               </button>
@@ -133,7 +198,9 @@ export default function ReaderPane({ article, readerRef, onToggleFavorite, onTog
         <p className="text-sm mb-6" style={{ color: "var(--color-text-muted)" }}>
           {article.author && <span>{article.author}</span>}
           {article.author && article.published_at && " · "}
-          {article.published_at && <span>{new Date(article.published_at).toLocaleDateString()}</span>}
+          {article.published_at && (
+            <span>{new Date(article.published_at).toLocaleDateString()}</span>
+          )}
           {article.feed_title && <span> · {article.feed_title}</span>}
         </p>
         {fetching && !fullContent ? (
@@ -145,4 +212,3 @@ export default function ReaderPane({ article, readerRef, onToggleFavorite, onTog
     </main>
   );
 }
-

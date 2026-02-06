@@ -9,7 +9,7 @@ import type { FeedWithMeta, Folder, SidebarItem } from "../types";
 export function buildSidebarItems(
   feeds: FeedWithMeta[],
   folders: Folder[],
-  collapsedFolders: Set<number>,
+  collapsedFolders: Set<number>
 ): SidebarItem[] {
   const items: SidebarItem[] = [
     { kind: "filter", filter: "all" },
@@ -43,16 +43,12 @@ export function buildSidebarItems(
 export function findCurrentSidebarIndex(
   items: SidebarItem[],
   activeFeedId: number | null,
-  activeFilter: "all" | "unread" | "favourites",
+  activeFilter: "all" | "unread" | "favourites"
 ): number {
   if (activeFeedId !== null) {
-    const idx = items.findIndex(
-      (item) => item.kind === "feed" && item.feedId === activeFeedId,
-    );
+    const idx = items.findIndex((item) => item.kind === "feed" && item.feedId === activeFeedId);
     if (idx >= 0) return idx;
   }
-  const idx = items.findIndex(
-    (item) => item.kind === "filter" && item.filter === activeFilter,
-  );
+  const idx = items.findIndex((item) => item.kind === "filter" && item.filter === activeFilter);
   return idx >= 0 ? idx : 0;
 }

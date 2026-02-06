@@ -5,7 +5,7 @@ node_modules/
 dist/
 
 # Rust build output
-src-tauri/target/
+target
 
 # Tauri generated schemas
 src-tauri/gen/

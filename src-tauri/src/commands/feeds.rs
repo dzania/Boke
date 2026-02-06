@@ -95,10 +95,20 @@ pub async fn add_feed(url: String, pool: State<'_, SqlitePool>) -> Result<FeedWi
     // Insert articles
     for entry in &parsed.entries {
         let published = entry.published.map(|d| d.to_rfc3339());
-        let base = if entry.link.is_empty() { &feed_url } else { &entry.link };
-        let content = entry.content.as_deref().or(entry.summary.as_deref())
+        let base = if entry.link.is_empty() {
+            &feed_url
+        } else {
+            &entry.link
+        };
+        let content = entry
+            .content
+            .as_deref()
+            .or(entry.summary.as_deref())
             .map(|c| resolve_relative_urls(c, base));
-        let summary = entry.summary.as_deref().map(|s| resolve_relative_urls(s, base));
+        let summary = entry
+            .summary
+            .as_deref()
+            .map(|s| resolve_relative_urls(s, base));
         let _ = sqlx::query(
             "INSERT OR IGNORE INTO articles (feed_id, guid, title, link, author, summary, content, image_url, published_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -139,7 +149,10 @@ pub struct ImportResult {
 }
 
 #[tauri::command]
-pub async fn import_opml(path: String, pool: State<'_, SqlitePool>) -> Result<ImportResult, String> {
+pub async fn import_opml(
+    path: String,
+    pool: State<'_, SqlitePool>,
+) -> Result<ImportResult, String> {
     let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let feed_urls = parse_opml(&content)?;
 
@@ -157,12 +170,11 @@ pub async fn import_opml(path: String, pool: State<'_, SqlitePool>) -> Result<Im
 
     for feed_url in feed_urls {
         // Check if already subscribed
-        let exists: Option<i64> =
-            sqlx::query_scalar("SELECT id FROM feeds WHERE feed_url = ?")
-                .bind(&feed_url)
-                .fetch_optional(pool.inner())
-                .await
-                .map_err(|e| e.to_string())?;
+        let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM feeds WHERE feed_url = ?")
+            .bind(&feed_url)
+            .fetch_optional(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?;
 
         if exists.is_some() {
             result.skipped += 1;
@@ -223,10 +235,20 @@ pub async fn import_opml(path: String, pool: State<'_, SqlitePool>) -> Result<Im
         // Insert articles
         for entry in &parsed.entries {
             let published = entry.published.map(|d| d.to_rfc3339());
-            let base = if entry.link.is_empty() { &feed_url } else { &entry.link };
-            let content = entry.content.as_deref().or(entry.summary.as_deref())
+            let base = if entry.link.is_empty() {
+                &feed_url
+            } else {
+                &entry.link
+            };
+            let content = entry
+                .content
+                .as_deref()
+                .or(entry.summary.as_deref())
                 .map(|c| resolve_relative_urls(c, base));
-            let summary = entry.summary.as_deref().map(|s| resolve_relative_urls(s, base));
+            let summary = entry
+                .summary
+                .as_deref()
+                .map(|s| resolve_relative_urls(s, base));
             let _ = sqlx::query(
                 "INSERT OR IGNORE INTO articles (feed_id, guid, title, link, author, summary, content, image_url, published_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -268,7 +290,9 @@ fn parse_opml(xml: &str) -> Result<Vec<String>, String> {
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref e)) | Ok(Event::Start(ref e)) if e.name().as_ref() == b"outline" => {
+            Ok(Event::Empty(ref e)) | Ok(Event::Start(ref e))
+                if e.name().as_ref() == b"outline" =>
+            {
                 let mut xml_url = None;
                 for attr in e.attributes().flatten() {
                     if attr.key.as_ref() == b"xmlUrl" || attr.key.as_ref() == b"xmlurl" {
@@ -320,11 +344,12 @@ pub async fn get_feeds(pool: State<'_, SqlitePool>) -> Result<Vec<FeedWithMeta>,
 
     let mut feeds = Vec::new();
     for row in rows {
-        let unread: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM articles WHERE feed_id = ? AND is_read = 0")
-            .bind(row.0)
-            .fetch_one(pool.inner())
-            .await
-            .unwrap_or(0);
+        let unread: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM articles WHERE feed_id = ? AND is_read = 0")
+                .bind(row.0)
+                .fetch_one(pool.inner())
+                .await
+                .unwrap_or(0);
 
         feeds.push(FeedWithMeta {
             id: row.0,
@@ -347,7 +372,10 @@ pub async fn get_feeds(pool: State<'_, SqlitePool>) -> Result<Vec<FeedWithMeta>,
 }
 
 #[tauri::command]
-pub async fn refresh_feed(feed_id: i64, pool: State<'_, SqlitePool>) -> Result<RefreshResult, String> {
+pub async fn refresh_feed(
+    feed_id: i64,
+    pool: State<'_, SqlitePool>,
+) -> Result<RefreshResult, String> {
     let feed_url: String = sqlx::query_scalar("SELECT feed_url FROM feeds WHERE id = ?")
         .bind(feed_id)
         .fetch_one(pool.inner())
@@ -369,12 +397,14 @@ pub async fn refresh_feed(feed_id: i64, pool: State<'_, SqlitePool>) -> Result<R
 }
 
 #[tauri::command]
-pub async fn refresh_all_feeds(pool: State<'_, SqlitePool>, app: AppHandle) -> Result<Vec<RefreshResult>, String> {
-    let rows: Vec<(i64, String)> =
-        sqlx::query_as("SELECT id, feed_url FROM feeds")
-            .fetch_all(pool.inner())
-            .await
-            .map_err(|e| e.to_string())?;
+pub async fn refresh_all_feeds(
+    pool: State<'_, SqlitePool>,
+    app: AppHandle,
+) -> Result<Vec<RefreshResult>, String> {
+    let rows: Vec<(i64, String)> = sqlx::query_as("SELECT id, feed_url FROM feeds")
+        .fetch_all(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
 
     let pool_ref = pool.inner().clone();
     let mut set = tokio::task::JoinSet::new();
@@ -438,10 +468,20 @@ async fn do_refresh(feed_id: i64, feed_url: &str, pool: &SqlitePool) -> Result<i
     let mut new_count: i64 = 0;
     for entry in &parsed.entries {
         let published = entry.published.map(|d| d.to_rfc3339());
-        let base = if entry.link.is_empty() { feed_url } else { &entry.link };
-        let content = entry.content.as_deref().or(entry.summary.as_deref())
+        let base = if entry.link.is_empty() {
+            feed_url
+        } else {
+            &entry.link
+        };
+        let content = entry
+            .content
+            .as_deref()
+            .or(entry.summary.as_deref())
             .map(|c| resolve_relative_urls(c, base));
-        let summary = entry.summary.as_deref().map(|s| resolve_relative_urls(s, base));
+        let summary = entry
+            .summary
+            .as_deref()
+            .map(|s| resolve_relative_urls(s, base));
         let result = sqlx::query(
             "INSERT OR IGNORE INTO articles (feed_id, guid, title, link, author, summary, content, image_url, published_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -516,11 +556,12 @@ async fn get_feed_by_id(feed_id: i64, pool: &SqlitePool) -> Result<FeedWithMeta,
     .await
     .map_err(|e| e.to_string())?;
 
-    let unread: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM articles WHERE feed_id = ? AND is_read = 0")
-        .bind(feed_id)
-        .fetch_one(pool)
-        .await
-        .unwrap_or(0);
+    let unread: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM articles WHERE feed_id = ? AND is_read = 0")
+            .bind(feed_id)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
 
     Ok(FeedWithMeta {
         id: row.0,

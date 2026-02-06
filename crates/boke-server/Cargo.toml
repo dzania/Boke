@@ -1,0 +1,27 @@
+[package]
+name = "boke-server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "HTTP server for Boke RSS reader"
+
+[dependencies]
+# Core library
+boke-core = { path = "../boke-core", features = ["sqlite", "postgres"] }
+
+# Workspace dependencies
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+
+# HTTP server
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+
+# Multipart for file uploads (OPML import)
+axum-extra = { version = "0.10", features = ["multipart"] }

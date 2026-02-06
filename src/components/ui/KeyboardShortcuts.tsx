@@ -3,34 +3,43 @@ interface KeyboardShortcutsProps {
 }
 
 const SHORTCUTS = [
-  { section: "Navigation", bindings: [
-    { key: "h", desc: "Focus sidebar" },
-    { key: "l", desc: "Focus article list" },
-    { key: "j / ↓", desc: "Next item / scroll down in reader" },
-    { key: "k / ↑", desc: "Previous item / scroll up in reader" },
-    { key: "Enter / o", desc: "Open selected article / select sidebar item" },
-    { key: "Escape", desc: "Close reader / exit sidebar / close dialog" },
-    { key: "g g", desc: "Jump to top of list" },
-    { key: "G", desc: "Jump to bottom of list" },
-    { key: "1-9", desc: "Switch to nth feed" },
-  ]},
-  { section: "Reader", bindings: [
-    { key: "J / K", desc: "Scroll reader (fast)" },
-    { key: "Space", desc: "Page down" },
-    { key: "Shift+Space", desc: "Page up" },
-  ]},
-  { section: "Actions", bindings: [
-    { key: "m", desc: "Toggle read / unread" },
-    { key: "s", desc: "Toggle favorite" },
-    { key: "v", desc: "Open in browser" },
-    { key: "r", desc: "Refresh current feed" },
-    { key: "R", desc: "Refresh all feeds" },
-    { key: "Shift+A", desc: "Mark all as read" },
-    { key: "a", desc: "Add feed" },
-    { key: "b", desc: "Toggle article list panel" },
-    { key: "/ or Cmd+K", desc: "Search articles" },
-    { key: "?", desc: "Show this help" },
-  ]},
+  {
+    section: "Navigation",
+    bindings: [
+      { key: "h", desc: "Focus sidebar" },
+      { key: "l", desc: "Focus article list" },
+      { key: "j / ↓", desc: "Next item / scroll down in reader" },
+      { key: "k / ↑", desc: "Previous item / scroll up in reader" },
+      { key: "Enter / o", desc: "Open selected article / select sidebar item" },
+      { key: "Escape", desc: "Close reader / exit sidebar / close dialog" },
+      { key: "g g", desc: "Jump to top of list" },
+      { key: "G", desc: "Jump to bottom of list" },
+      { key: "1-9", desc: "Switch to nth feed" },
+    ],
+  },
+  {
+    section: "Reader",
+    bindings: [
+      { key: "J / K", desc: "Scroll reader (fast)" },
+      { key: "Space", desc: "Page down" },
+      { key: "Shift+Space", desc: "Page up" },
+    ],
+  },
+  {
+    section: "Actions",
+    bindings: [
+      { key: "m", desc: "Toggle read / unread" },
+      { key: "s", desc: "Toggle favorite" },
+      { key: "v", desc: "Open in browser" },
+      { key: "r", desc: "Refresh current feed" },
+      { key: "R", desc: "Refresh all feeds" },
+      { key: "Shift+A", desc: "Mark all as read" },
+      { key: "a", desc: "Add feed" },
+      { key: "b", desc: "Toggle article list panel" },
+      { key: "/ or Cmd+K", desc: "Search articles" },
+      { key: "?", desc: "Show this help" },
+    ],
+  },
 ];
 
 const TIPS = [
@@ -49,7 +58,10 @@ export default function KeyboardShortcuts({ onClose }: KeyboardShortcutsProps) {
     >
       <div
         className="rounded-lg p-6 w-[520px] max-h-[80vh] overflow-y-auto shadow-xl"
-        style={{ backgroundColor: "var(--color-bg-primary)", border: "1px solid var(--color-border)" }}
+        style={{
+          backgroundColor: "var(--color-bg-primary)",
+          border: "1px solid var(--color-border)",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-5">
@@ -63,7 +75,14 @@ export default function KeyboardShortcuts({ onClose }: KeyboardShortcutsProps) {
             style={{ color: "var(--color-text-muted)" }}
             aria-label="Close"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
               <path d="M4 4l8 8M12 4l-8 8" />
             </svg>
           </button>

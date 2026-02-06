@@ -1,11 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type {
-  FeedWithMeta,
-  Article,
-  Folder,
-  RefreshResult,
-  DiscoveredFeed,
-} from "../types";
+import type { FeedWithMeta, Article, Folder, RefreshResult, DiscoveredFeed } from "../types";
 
 export function addFeed(url: string): Promise<FeedWithMeta> {
   return invoke<FeedWithMeta>("add_feed", { url });
@@ -32,7 +26,7 @@ export function getArticles(
   offset: number,
   limit: number,
   unreadOnly: boolean,
-  favoritesOnly: boolean,
+  favoritesOnly: boolean
 ): Promise<Article[]> {
   return invoke<Article[]>("get_articles", { feedId, offset, limit, unreadOnly, favoritesOnly });
 }

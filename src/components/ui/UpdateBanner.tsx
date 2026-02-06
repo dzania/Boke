@@ -6,7 +6,9 @@ export default function UpdateBanner() {
   const [installing, setInstalling] = useState(false);
 
   useEffect(() => {
-    check().then(setUpdate).catch(() => {});
+    check()
+      .then(setUpdate)
+      .catch(() => {});
   }, []);
 
   if (!update) return null;

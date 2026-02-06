@@ -20,12 +20,11 @@ pub async fn get_folders(pool: State<'_, SqlitePool>) -> Result<Vec<Folder>, Str
 
     let mut folders = Vec::with_capacity(rows.len());
     for (id, name) in rows {
-        let (count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM feeds WHERE folder_id = ?")
-                .bind(id)
-                .fetch_one(pool.inner())
-                .await
-                .map_err(|e| e.to_string())?;
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM feeds WHERE folder_id = ?")
+            .bind(id)
+            .fetch_one(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?;
 
         folders.push(Folder {
             id,

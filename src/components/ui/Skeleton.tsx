@@ -17,14 +17,14 @@ export function ArticleListSkeleton({ count = 5 }: { count?: number }) {
                 className="h-4 rounded"
                 style={{
                   backgroundColor: "var(--color-border)",
-                  width: `${60 + (i * 17) % 30}%`,
+                  width: `${60 + ((i * 17) % 30)}%`,
                 }}
               />
               <div
                 className="h-3 rounded mt-1.5"
                 style={{
                   backgroundColor: "var(--color-border)",
-                  width: `${30 + (i * 13) % 20}%`,
+                  width: `${30 + ((i * 13) % 20)}%`,
                   opacity: 0.6,
                 }}
               />
@@ -40,15 +40,12 @@ export function FeedListSkeleton({ count = 4 }: { count?: number }) {
   return (
     <div role="status" aria-label="Loading feeds">
       {Array.from({ length: count }, (_, i) => (
-        <div
-          key={i}
-          className="flex items-center justify-between px-3 py-1.5 mt-0.5 animate-pulse"
-        >
+        <div key={i} className="flex items-center justify-between px-3 py-1.5 mt-0.5 animate-pulse">
           <div
             className="h-4 rounded"
             style={{
               backgroundColor: "var(--color-border)",
-              width: `${50 + (i * 19) % 35}%`,
+              width: `${50 + ((i * 19) % 35)}%`,
             }}
           />
           <div

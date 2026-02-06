@@ -55,7 +55,10 @@ export default function AddFeedDialog({ open: isOpen, onClose }: AddFeedDialogPr
     >
       <div
         className="rounded-lg p-6 w-[420px] shadow-xl"
-        style={{ backgroundColor: "var(--color-bg-primary)", border: "1px solid var(--color-border)" }}
+        style={{
+          backgroundColor: "var(--color-bg-primary)",
+          border: "1px solid var(--color-border)",
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--color-text-primary)" }}>
@@ -103,7 +106,9 @@ export default function AddFeedDialog({ open: isOpen, onClose }: AddFeedDialogPr
         {/* Divider */}
         <div className="flex items-center gap-3 my-4">
           <div className="flex-1 h-px" style={{ backgroundColor: "var(--color-border)" }} />
-          <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>or</span>
+          <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+            or
+          </span>
           <div className="flex-1 h-px" style={{ backgroundColor: "var(--color-border)" }} />
         </div>
 
@@ -119,7 +124,14 @@ export default function AddFeedDialog({ open: isOpen, onClose }: AddFeedDialogPr
             border: "1px solid var(--color-border)",
           }}
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
             <path d="M8 10V2M8 2L5 5M8 2l3 3" />
             <path d="M2 10v3a1 1 0 001 1h10a1 1 0 001-1v-3" />
           </svg>
@@ -128,7 +140,9 @@ export default function AddFeedDialog({ open: isOpen, onClose }: AddFeedDialogPr
 
         {importOpml.isError && (
           <p className="text-red-500 text-xs mt-2">
-            {importOpml.error instanceof Error ? importOpml.error.message : String(importOpml.error)}
+            {importOpml.error instanceof Error
+              ? importOpml.error.message
+              : String(importOpml.error)}
           </p>
         )}
         {importStatus && (
