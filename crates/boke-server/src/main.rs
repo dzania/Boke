@@ -1,6 +1,6 @@
 use axum::{
-    routing::{delete, get, post, put},
     Router,
+    routing::{delete, get, post, put},
 };
 use boke_core::{
     db::DatabasePool,
@@ -61,6 +61,7 @@ async fn main() -> anyhow::Result<()> {
         // Feed routes
         .route("/feeds", get(routes::feeds::get_feeds))
         .route("/feeds", post(routes::feeds::add_feed))
+        .route("/feeds/import", post(routes::feeds::import_opml))
         .route("/feeds/{id}", delete(routes::feeds::remove_feed))
         .route("/feeds/{id}/refresh", post(routes::feeds::refresh_feed))
         .route("/feeds/refresh", post(routes::feeds::refresh_all_feeds))
@@ -98,10 +99,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .nest("/api", api_routes)
-        .nest_service(
-            "/",
-            ServeDir::new(&config.static_dir).append_index_html_on_directories(true),
-        )
+        .fallback_service(ServeDir::new(&config.static_dir).append_index_html_on_directories(true))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)

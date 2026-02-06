@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import * as api from "../lib/tauri";
+import * as api from "../lib/api";
 
 export function useFeeds() {
   return useQuery({
@@ -21,7 +21,7 @@ export function useAddFeed() {
 export function useImportOpml() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (path: string) => api.importOpml(path),
+    mutationFn: (fileOrPath: string | File) => api.importOpml(fileOrPath),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["feeds"] });
       queryClient.invalidateQueries({ queryKey: ["articles"] });

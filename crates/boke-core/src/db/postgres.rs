@@ -24,7 +24,8 @@ impl PostgresDatabase {
     }
 
     async fn init_schema(pool: &PgPool) -> DbResult<()> {
-        sqlx::query(SCHEMA).execute(pool).await?;
+        // Use raw_sql for multi-statement schema initialization
+        sqlx::raw_sql(SCHEMA).execute(pool).await?;
         Ok(())
     }
 }
@@ -148,6 +149,7 @@ impl Database for PostgresDatabase {
             SELECT
                 f.id, f.title, f.folder_id, f.feed_url, f.site_url, f.description,
                 f.language, f.favicon_url, f.last_fetched_at, f.last_build_date,
+                f.created_at, f.updated_at,
                 (SELECT COUNT(*) FROM articles a WHERE a.feed_id = f.id AND a.is_read = FALSE) as unread_count
             FROM feeds f
             ORDER BY LOWER(f.title)
@@ -487,6 +489,8 @@ struct FeedWithMetaRow {
     favicon_url: Option<String>,
     last_fetched_at: Option<chrono::DateTime<chrono::Utc>>,
     last_build_date: Option<chrono::DateTime<chrono::Utc>>,
+    created_at: Option<chrono::DateTime<chrono::Utc>>,
+    updated_at: Option<chrono::DateTime<chrono::Utc>>,
     unread_count: i64,
 }
 
@@ -503,6 +507,8 @@ impl From<FeedWithMetaRow> for FeedWithMeta {
             favicon_url: row.favicon_url,
             last_fetched_at: row.last_fetched_at,
             last_build_date: row.last_build_date,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
             unread_count: row.unread_count,
         }
     }

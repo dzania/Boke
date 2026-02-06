@@ -1,12 +1,21 @@
 import { useState, useEffect } from "react";
-import { check, type Update } from "@tauri-apps/plugin-updater";
+import { isDesktop } from "../../lib/platform";
+
+interface Update {
+  version: string;
+  downloadAndInstall: () => Promise<void>;
+}
 
 export default function UpdateBanner() {
   const [update, setUpdate] = useState<Update | null>(null);
   const [installing, setInstalling] = useState(false);
 
   useEffect(() => {
-    check()
+    // Only check for updates in desktop (Tauri) mode
+    if (!isDesktop()) return;
+
+    import("@tauri-apps/plugin-updater")
+      .then(({ check }) => check())
       .then(setUpdate)
       .catch(() => {});
   }, []);

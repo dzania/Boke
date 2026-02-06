@@ -1,5 +1,5 @@
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FeedFormat {

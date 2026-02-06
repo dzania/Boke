@@ -7,8 +7,13 @@
 
 import type { FeedWithMeta, Article, Folder, RefreshResult, DiscoveredFeed } from "../types";
 
-// Runtime detection - check if we're running in Tauri
-const isTauri = typeof window !== "undefined" && "__TAURI__" in window;
+// Runtime detection - check if we're running in Tauri (evaluated at call time, not module load)
+// Tauri v2 uses __TAURI_INTERNALS__, v1 used __TAURI__
+function isTauri(): boolean {
+  return (
+    typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)
+  );
+}
 
 // Lazy imports for tree-shaking
 type TauriApi = typeof import("./tauri");
@@ -31,13 +36,10 @@ async function getHttpApi(): Promise<HttpApi> {
   return httpApi;
 }
 
-// Re-export the ImportResult type
-export type { ImportResult } from "./tauri";
-
 // Feed operations
 
 export async function addFeed(url: string): Promise<FeedWithMeta> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.addFeed(url);
   } else {
@@ -47,7 +49,7 @@ export async function addFeed(url: string): Promise<FeedWithMeta> {
 }
 
 export async function removeFeed(feedId: number): Promise<void> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.removeFeed(feedId);
   } else {
@@ -57,7 +59,7 @@ export async function removeFeed(feedId: number): Promise<void> {
 }
 
 export async function getFeeds(): Promise<FeedWithMeta[]> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.getFeeds();
   } else {
@@ -67,7 +69,7 @@ export async function getFeeds(): Promise<FeedWithMeta[]> {
 }
 
 export async function refreshFeed(feedId: number): Promise<RefreshResult> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.refreshFeed(feedId);
   } else {
@@ -77,12 +79,39 @@ export async function refreshFeed(feedId: number): Promise<RefreshResult> {
 }
 
 export async function refreshAllFeeds(): Promise<RefreshResult[]> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.refreshAllFeeds();
   } else {
     const api = await getHttpApi();
     return api.refreshAllFeeds();
+  }
+}
+
+export type { ImportResult } from "./http";
+
+/**
+ * Import feeds from an OPML file.
+ * In Tauri mode, pass the file path as string.
+ * In web mode, pass the File object.
+ */
+export async function importOpml(fileOrPath: string | File): Promise<{
+  added: number;
+  skipped: number;
+  errors: string[];
+}> {
+  if (isTauri()) {
+    const api = await getTauriApi();
+    if (typeof fileOrPath !== "string") {
+      throw new Error("In desktop mode, importOpml expects a file path string");
+    }
+    return api.importOpml(fileOrPath);
+  } else {
+    const api = await getHttpApi();
+    if (!(fileOrPath instanceof File)) {
+      throw new Error("In web mode, importOpml expects a File object");
+    }
+    return api.importOpml(fileOrPath);
   }
 }
 
@@ -95,7 +124,7 @@ export async function getArticles(
   unreadOnly: boolean,
   favoritesOnly: boolean
 ): Promise<Article[]> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.getArticles(feedId, offset, limit, unreadOnly, favoritesOnly);
   } else {
@@ -105,7 +134,7 @@ export async function getArticles(
 }
 
 export async function getArticle(articleId: number): Promise<Article> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.getArticle(articleId);
   } else {
@@ -115,7 +144,7 @@ export async function getArticle(articleId: number): Promise<Article> {
 }
 
 export async function toggleRead(articleId: number): Promise<void> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.toggleRead(articleId);
   } else {
@@ -125,7 +154,7 @@ export async function toggleRead(articleId: number): Promise<void> {
 }
 
 export async function markAllRead(feedId: number | null): Promise<void> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.markAllRead(feedId);
   } else {
@@ -135,7 +164,7 @@ export async function markAllRead(feedId: number | null): Promise<void> {
 }
 
 export async function markAllUnread(feedId: number | null): Promise<void> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.markAllUnread(feedId);
   } else {
@@ -145,7 +174,7 @@ export async function markAllUnread(feedId: number | null): Promise<void> {
 }
 
 export async function toggleFavorite(articleId: number): Promise<void> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.toggleFavorite(articleId);
   } else {
@@ -155,7 +184,7 @@ export async function toggleFavorite(articleId: number): Promise<void> {
 }
 
 export async function getFavoritesCount(): Promise<number> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.getFavoritesCount();
   } else {
@@ -165,7 +194,7 @@ export async function getFavoritesCount(): Promise<number> {
 }
 
 export async function searchArticles(query: string, limit: number): Promise<Article[]> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.searchArticles(query, limit);
   } else {
@@ -175,7 +204,7 @@ export async function searchArticles(query: string, limit: number): Promise<Arti
 }
 
 export async function fetchArticleContent(articleId: number): Promise<string> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.fetchArticleContent(articleId);
   } else {
@@ -187,7 +216,7 @@ export async function fetchArticleContent(articleId: number): Promise<string> {
 // Folder operations
 
 export async function getFolders(): Promise<Folder[]> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.getFolders();
   } else {
@@ -197,7 +226,7 @@ export async function getFolders(): Promise<Folder[]> {
 }
 
 export async function createFolder(name: string): Promise<Folder> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.createFolder(name);
   } else {
@@ -207,7 +236,7 @@ export async function createFolder(name: string): Promise<Folder> {
 }
 
 export async function renameFolder(folderId: number, name: string): Promise<void> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.renameFolder(folderId, name);
   } else {
@@ -217,7 +246,7 @@ export async function renameFolder(folderId: number, name: string): Promise<void
 }
 
 export async function deleteFolder(folderId: number): Promise<void> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.deleteFolder(folderId);
   } else {
@@ -227,7 +256,7 @@ export async function deleteFolder(folderId: number): Promise<void> {
 }
 
 export async function moveFeedToFolder(feedId: number, folderId: number | null): Promise<void> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.moveFeedToFolder(feedId, folderId);
   } else {
@@ -239,7 +268,7 @@ export async function moveFeedToFolder(feedId: number, folderId: number | null):
 // Settings - only available in Tauri mode
 
 export async function getSetting(key: string): Promise<string | null> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.getSetting(key);
   }
@@ -248,7 +277,7 @@ export async function getSetting(key: string): Promise<string | null> {
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.setSetting(key, value);
   }
@@ -259,7 +288,7 @@ export async function setSetting(key: string, value: string): Promise<void> {
 // Feed discovery - only available in Tauri mode
 
 export async function discoverFeed(url: string): Promise<DiscoveredFeed[]> {
-  if (isTauri) {
+  if (isTauri()) {
     const api = await getTauriApi();
     return api.discoverFeed(url);
   }
@@ -269,10 +298,10 @@ export async function discoverFeed(url: string): Promise<DiscoveredFeed[]> {
 
 // Helper to check if running in Tauri/desktop mode
 export function isDesktopMode(): boolean {
-  return isTauri;
+  return isTauri();
 }
 
 // Helper to check if running in web/browser mode
 export function isWebMode(): boolean {
-  return !isTauri;
+  return !isTauri();
 }

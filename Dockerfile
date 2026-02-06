@@ -19,7 +19,7 @@ COPY index.html vite.config.ts tsconfig.json tsconfig.node.json ./
 RUN pnpm build
 
 # Stage 2: Build Rust server
-FROM rust:1.83-bookworm AS rust-builder
+FROM rust:bookworm AS rust-builder
 WORKDIR /app
 
 # Install dependencies for SQLite and OpenSSL
@@ -60,11 +60,17 @@ RUN useradd -r -s /bin/false boke && \
     chown -R boke:boke /app /data
 USER boke
 
-# Environment variables
+# Environment variables with defaults
 ENV BIND_ADDRESS=0.0.0.0:8080
 ENV STATIC_DIR=/app/static
-ENV DATABASE_URL=sqlite:///data/boke.db
 ENV RUST_LOG=info
+
+# Database configuration (defaults to SQLite)
+# DB_TYPE: "sqlite" or "postgres" (default: sqlite)
+# SQLite: DB_PATH (default: /data/boke.db)
+# PostgreSQL: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+ENV DB_TYPE=sqlite
+ENV DB_PATH=/data/boke.db
 
 # Volume for SQLite data persistence
 VOLUME ["/data"]

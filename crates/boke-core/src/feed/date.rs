@@ -32,10 +32,10 @@ pub fn parse_date(input: &str) -> Option<DateTime<Utc>> {
         .replace("PDT", "-0700")
         .replace("UTC", "+0000");
 
-    if normalized != input {
-        if let Ok(dt) = DateTime::parse_from_rfc2822(&normalized) {
-            return Some(dt.with_timezone(&Utc));
-        }
+    if normalized != input
+        && let Ok(dt) = DateTime::parse_from_rfc2822(&normalized)
+    {
+        return Some(dt.with_timezone(&Utc));
     }
 
     // 4. Try naive date/time patterns (assume UTC)

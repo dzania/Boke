@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openUrl } from "../../lib/platform";
 import ArticleContent from "../article/ArticleContent";
 import { ReaderSkeleton } from "../ui/Skeleton";
-import { fetchArticleContent } from "../../lib/tauri";
+import { fetchArticleContent } from "../../lib/api";
 import type { Article } from "../../types";
 
 const CONTENT_SHORT_THRESHOLD = 800;

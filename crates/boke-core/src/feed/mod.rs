@@ -8,9 +8,10 @@ pub mod rss1;
 pub mod rss2;
 
 use detector::FeedFormat;
-use error::FeedError;
 use model::Feed;
 
+pub use discovery::{DiscoveredFeed, discover};
+pub use error::FeedError;
 pub use model::{Feed as ParsedFeed, FeedEntry as ParsedFeedEntry};
 
 pub struct FeedParser;

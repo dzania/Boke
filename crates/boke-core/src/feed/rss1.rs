@@ -1,5 +1,5 @@
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 
 use super::date::parse_date;
 use super::error::FeedError;
@@ -145,7 +145,7 @@ fn apply_text(
     current_entry: &mut Option<FeedEntry>,
 ) {
     if in_item {
-        if let Some(ref mut entry) = current_entry {
+        if let Some(entry) = &mut *current_entry {
             match tag {
                 "title" => entry.title = text.to_string(),
                 "link" => entry.link = text.to_string(),

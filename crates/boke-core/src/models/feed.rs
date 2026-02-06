@@ -29,6 +29,8 @@ pub struct FeedWithMeta {
     pub favicon_url: Option<String>,
     pub last_fetched_at: Option<DateTime<Utc>>,
     pub last_build_date: Option<DateTime<Utc>>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
     pub unread_count: i64,
 }
 

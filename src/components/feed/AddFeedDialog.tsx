@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
+import { openFileDialog } from "../../lib/platform";
 import { useAddFeed, useImportOpml } from "../../api/feeds";
 
 interface AddFeedDialogProps {
@@ -27,14 +27,13 @@ export default function AddFeedDialog({ open: isOpen, onClose }: AddFeedDialogPr
   };
 
   const handleImportOpml = async () => {
-    const file = await open({
-      multiple: false,
+    const fileOrPath = await openFileDialog({
       filters: [{ name: "OPML", extensions: ["opml", "xml"] }],
     });
-    if (!file) return;
+    if (!fileOrPath) return;
 
     setImportStatus(null);
-    importOpml.mutate(file, {
+    importOpml.mutate(fileOrPath, {
       onSuccess: (result) => {
         const parts: string[] = [];
         if (result.added > 0) parts.push(`${result.added} feeds added`);

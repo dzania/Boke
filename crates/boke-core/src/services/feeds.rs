@@ -1,5 +1,5 @@
 use crate::db::{Database, DbResult, InsertResult};
-use crate::feed::{discovery, FeedParser};
+use crate::feed::{FeedParser, discovery};
 use crate::models::{FeedWithMeta, NewArticle, NewFeed};
 use std::sync::Arc;
 
@@ -70,10 +70,10 @@ impl<D: Database> FeedService<D> {
         }
 
         // Fetch favicon in background (best effort)
-        if let Some(site_url) = parsed.site_url() {
-            if let Ok(favicon) = self.fetch_favicon(site_url).await {
-                let _ = self.db.update_feed_favicon(feed_id, &favicon).await;
-            }
+        if let Some(site_url) = parsed.site_url()
+            && let Ok(favicon) = self.fetch_favicon(site_url).await
+        {
+            let _ = self.db.update_feed_favicon(feed_id, &favicon).await;
         }
 
         // Return the feed with metadata
@@ -178,16 +178,15 @@ impl<D: Database> FeedService<D> {
         ];
 
         for sel_str in selectors {
-            if let Ok(selector) = Selector::parse(sel_str) {
-                if let Some(element) = document.select(&selector).next() {
-                    if let Some(href) = element.value().attr("href") {
-                        if href.starts_with("http") {
-                            return Ok(href.to_string());
-                        } else {
-                            let base = url::Url::parse(site_url)?;
-                            return Ok(base.join(href)?.to_string());
-                        }
-                    }
+            if let Ok(selector) = Selector::parse(sel_str)
+                && let Some(element) = document.select(&selector).next()
+                && let Some(href) = element.value().attr("href")
+            {
+                if href.starts_with("http") {
+                    return Ok(href.to_string());
+                } else {
+                    let base = url::Url::parse(site_url)?;
+                    return Ok(base.join(href)?.to_string());
                 }
             }
         }

@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde_json::json;
 
@@ -10,6 +10,7 @@ pub enum ApiError {
     Database(boke_core::db::DbError),
     Internal(anyhow::Error),
     NotFound,
+    BadRequest(String),
 }
 
 impl IntoResponse for ApiError {
@@ -24,6 +25,7 @@ impl IntoResponse for ApiError {
                 (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
             }
             ApiError::NotFound => (StatusCode::NOT_FOUND, "Resource not found".to_string()),
+            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
         };
 
         (status, Json(json!({ "error": message }))).into_response()

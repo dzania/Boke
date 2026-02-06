@@ -26,16 +26,3 @@ tauri-plugin-dialog = "2"
 # Workspace dependencies
 serde.workspace = true
 serde_json.workspace = true
-sqlx = { workspace = true, features = ["sqlite"] }
-tokio.workspace = true
-chrono.workspace = true
-url.workspace = true
-log.workspace = true
-
-# Feed parsing (still used locally)
-quick-xml.workspace = true
-scraper.workspace = true
-reqwest.workspace = true
-
-# Text processing
-regex = "1.12.3"
