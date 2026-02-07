@@ -150,7 +150,4 @@ jobs:
         run: cargo build --workspace --release
 
       - name: Build Tauri app
-        run: pnpm tauri build
-        env:
-          # Skip signing in CI (no secrets available in PRs from forks)
-          TAURI_SIGNING_PRIVATE_KEY: ""
+        run: pnpm tauri build --no-bundle
