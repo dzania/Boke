@@ -73,3 +73,51 @@ describe("buildArticleTree", () => {
     expect(buildArticleTree("", BASE).children).toHaveLength(0);
   });
 });
+
+describe("interactive content", () => {
+  it("drops <style> blocks instead of printing their CSS", () => {
+    const tree = buildArticleTree(
+      "<p>Before</p><style>.x { color: red; }</style><p>After</p>",
+      BASE
+    );
+    let text = "";
+    visit(tree, "text", (node: { value: string }) => {
+      text += node.value;
+    });
+    expect(text).not.toContain("color: red");
+    expect(elements(tree, "p")).toHaveLength(2);
+  });
+
+  it("replaces a script-driven figure with a link to the original", () => {
+    const tree = buildArticleTree(
+      '<p>Intro</p><figure id="cs-root"><style>.cs{}</style><svg><rect></rect></svg>' +
+        '<button aria-label="Next step">Next</button><script>run()</script></figure><p>Outro</p>',
+      BASE
+    );
+    expect(elements(tree, "figure")).toHaveLength(0);
+    expect(elements(tree, "button")).toHaveLength(0);
+    expect(elements(tree, "svg")).toHaveLength(0);
+    const links = elements(tree, "a");
+    expect(links).toHaveLength(1);
+    expect(links[0].properties.href).toBe("https://example.com/2024/post.html#cs-root");
+    expect(elements(tree, "p").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("keeps static figures and SVGs without scripts", () => {
+    const tree = buildArticleTree(
+      "<figure><svg><rect></rect></svg><figcaption>Static</figcaption></figure>",
+      BASE
+    );
+    expect(elements(tree, "figure")).toHaveLength(1);
+    expect(elements(tree, "svg")).toHaveLength(1);
+  });
+
+  it("does not swallow an article that merely contains a script somewhere", () => {
+    const tree = buildArticleTree(
+      "<div><p>Long article</p><div><svg></svg></div><p>More</p><section><script>x()</script></section></div>",
+      BASE
+    );
+    expect(elements(tree, "svg")).toHaveLength(1);
+    expect(elements(tree, "p").map((p) => p.children.length)).toEqual([1, 1]);
+  });
+});

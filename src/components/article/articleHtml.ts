@@ -10,7 +10,7 @@ import rehypeParse from "rehype-parse";
 import rehypeSanitize, { defaultSchema, type Options as Schema } from "rehype-sanitize";
 import { rehypeInlineCodeProperty } from "react-shiki";
 import { unified } from "unified";
-import { SKIP, visit } from "unist-util-visit";
+import { EXIT, SKIP, visit } from "unist-util-visit";
 import { resolveTreeUrls } from "../../lib/rehype/resolveUrls";
 
 const SVG_TAGS = [
@@ -106,6 +106,9 @@ const SVG_ATTRS = [
 
 const sanitizeSchema: Schema = {
   ...defaultSchema,
+  // Drop these elements together with their text. Sanitize otherwise unwraps a disallowed
+  // element and keeps its children, which dumps a post's inline CSS onto the page as text.
+  strip: [...(defaultSchema.strip ?? []), "style"],
   tagNames: [
     ...(defaultSchema.tagNames || []),
     ...SVG_TAGS,
@@ -309,6 +312,74 @@ function rehypeEmbeds() {
   };
 }
 
+/** Elements whose presence next to a script marks a figure as driven by that script. */
+const INTERACTIVE_TAGS = new Set(["button", "canvas", "input", "select", "svg"]);
+
+function hasDescendant(node: Element, predicate: (element: Element) => boolean): boolean {
+  let found = false;
+  visit(node, "element", (child: Element) => {
+    if (child === node || !predicate(child)) return;
+    found = true;
+    return EXIT;
+  });
+  return found;
+}
+
+/**
+ * Replaces script-driven figures with a card that links to them on the original page.
+ *
+ * The reader never runs feed scripts, so a figure built from inline `<script>`, `<svg>` and
+ * `<button>`s renders as a frozen, unstyled skeleton with stray button labels. A container
+ * qualifies when it has a `<script>` as a direct child plus some interactive content; requiring
+ * a direct child keeps a stray script elsewhere from swallowing a whole article.
+ */
+function replaceScriptedFigures(tree: Root, baseUrl: URL | null) {
+  visit(tree, "element", (node: Element, index, parent) => {
+    if (parent === undefined || index === undefined) return;
+    const hasOwnScript = node.children.some(
+      (child) => child.type === "element" && child.tagName === "script"
+    );
+    if (!hasOwnScript || !hasDescendant(node, (child) => INTERACTIVE_TAGS.has(child.tagName))) {
+      return;
+    }
+
+    const anchor = typeof node.properties.id === "string" ? `#${node.properties.id}` : "";
+    const children: Element[] = [
+      {
+        type: "element",
+        tagName: "p",
+        properties: {},
+        children: [{ type: "text", value: "This interactive figure needs JavaScript to run." }],
+      },
+    ];
+    if (baseUrl !== null) {
+      children.push({
+        type: "element",
+        tagName: "a",
+        properties: {
+          href: `${baseUrl.href.split("#")[0]}${anchor}`,
+          className: ["social-embed__link"],
+        },
+        children: [{ type: "text", value: "Open it on the original page \u2192" }],
+      });
+    }
+    parent.children[index] = {
+      type: "element",
+      tagName: "div",
+      properties: { className: ["social-embed", "interactive-figure"] },
+      children: [
+        {
+          type: "element",
+          tagName: "div",
+          properties: { className: ["social-embed__content"] },
+          children,
+        },
+      ],
+    };
+    return SKIP;
+  });
+}
+
 const parser = unified().use(rehypeParse, { fragment: true });
 
 const transformer = unified()
@@ -327,5 +398,6 @@ const transformer = unified()
 export function buildArticleTree(html: string, baseUrl: URL | null): Root {
   const tree = parser.parse(html);
   resolveTreeUrls(tree, baseUrl);
+  replaceScriptedFigures(tree, baseUrl);
   return transformer.runSync(tree);
 }
