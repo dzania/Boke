@@ -12,7 +12,8 @@
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.20",
@@ -22,31 +23,32 @@
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-updater": "^2.10.0",
     "@types/hast": "^3.0.4",
+    "hast-util-to-jsx-runtime": "2.3.6",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-hotkeys-hook": "^5.2.4",
-    "react-markdown": "^10.1.0",
     "react-shiki": "^0.9.1",
-    "rehype-raw": "^7.0.0",
+    "rehype-parse": "9.0.1",
     "rehype-sanitize": "^6.0.0",
-    "remark-gfm": "^4.0.1",
+    "unified": "11.0.5",
     "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.27.0",
     "@tailwindcss/vite": "^4.1.18",
     "@tauri-apps/cli": "^2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "eslint": "^9.27.0",
-    "@eslint/js": "^9.27.0",
-    "typescript-eslint": "^8.32.1",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.2.0",
     "prettier": "^3.5.3",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4"
+    "typescript-eslint": "^8.32.1",
+    "vite": "^7.0.4",
+    "vitest": "3.2.4"
   }
 }

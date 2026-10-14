@@ -42,13 +42,16 @@ pub async fn refresh_all_feeds(
     let results = svc.refresh_all_feeds().await.map_err(|e| e.to_string())?;
 
     // Emit event for notifications
-    let total_new: i64 = results.iter().map(|r| r.new_articles).sum();
+    let total_new: u64 = results.iter().map(|r| r.new_articles).sum();
     let feeds_with_new = results.iter().filter(|r| r.new_articles > 0).count();
     if total_new > 0 {
-        let _ = app.emit(
+        // A failed notification must not fail the refresh itself, so the error is only logged.
+        if let Err(error) = app.emit(
             "new-articles",
             serde_json::json!({ "total": total_new, "feeds": feeds_with_new }),
-        );
+        ) {
+            log::warn!("Failed to emit new-articles event: {error}");
+        }
     }
 
     Ok(results)

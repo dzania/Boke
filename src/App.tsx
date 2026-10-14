@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import Sidebar from "./components/layout/Sidebar";
 import ArticleList from "./components/layout/ArticleList";
 import ReaderPane from "./components/layout/ReaderPane";
@@ -10,8 +10,8 @@ import { useFeeds, useRefreshAllFeeds, useRefreshFeed } from "./api/feeds";
 import { useFolders } from "./api/folders";
 import {
   useArticles,
-  useToggleRead,
-  useToggleFavorite,
+  useSetRead,
+  useSetFavorite,
   useMarkAllRead,
   useMarkAllUnread,
 } from "./api/articles";
@@ -25,110 +25,177 @@ import {
   requestNotificationPermission,
   sendNotification,
 } from "./lib/platform";
-import type { Article } from "./types";
+import type { ArticleFilter, ArticleListItem, RefreshResult } from "./types";
+
+const NO_ARTICLES: ArticleListItem[] = [];
+
+function logError(context: string) {
+  return (error: unknown) => console.error(context, error);
+}
+
+function describeRefreshFailure(error: unknown, results: RefreshResult[] | undefined) {
+  if (error) return String(error);
+  const failedCount = results?.filter((result) => result.error !== null).length ?? 0;
+  if (failedCount === 0) return null;
+  return failedCount === 1
+    ? "1 feed could not be refreshed"
+    : `${failedCount} feeds could not be refreshed`;
+}
 
 export default function App() {
   const [activeFeedId, setActiveFeedId] = useState<number | null>(null);
-  const [activeFilter, setActiveFilter] = useState<"all" | "unread" | "favourites">("all");
-  const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
+  const [activeFilter, setActiveFilter] = useState<ArticleFilter>("all");
+  // Snapshot of the opened article. The live copy is looked up in the list cache below, so
+  // flags stay current; the snapshot covers articles opened from search.
+  const [selection, setSelection] = useState<ArticleListItem | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [showSearch, setShowSearch] = useState(false);
   const [showAddFeed, setShowAddFeed] = useState(false);
   const [articleListVisible, setArticleListVisible] = useState(true);
-  const [collapsedFolders, setCollapsedFolders] = useState<Set<number>>(new Set());
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<number>>(() => new Set());
   const readerRef = useRef<HTMLElement | null>(null);
-  const hasRefreshed = useRef(false);
 
   const { theme, toggleTheme } = useTheme();
   const { data: feeds } = useFeeds();
   const { data: folders } = useFolders();
-  const {
-    data: articles,
-    isLoading: articlesLoading,
-    error: articlesErr,
-  } = useArticles(activeFeedId, activeFilter === "unread", activeFilter === "favourites");
-  const refreshAll = useRefreshAllFeeds();
-  const refreshFeed = useRefreshFeed();
-  const toggleRead = useToggleRead();
-  const toggleFavorite = useToggleFavorite();
-  const markAllRead = useMarkAllRead();
-  const markAllUnread = useMarkAllUnread();
+  const articlesQuery = useArticles(activeFeedId, activeFilter);
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = articlesQuery;
+  const articles = useMemo(
+    () => articlesQuery.data?.pages.flat() ?? NO_ARTICLES,
+    [articlesQuery.data]
+  );
+  const selectedArticle = useMemo(
+    () => (selection ? (articles.find((a) => a.id === selection.id) ?? selection) : null),
+    [selection, articles]
+  );
 
-  // Refresh all feeds on launch
+  // `mutate` functions are stable across renders; the mutation result objects are not, so
+  // callbacks depend only on `mutate`.
+  const refreshAll = useRefreshAllFeeds();
+  const { mutate: refreshAllMutate, isPending: refreshAllPending } = refreshAll;
+  const { mutate: refreshFeedMutate } = useRefreshFeed();
+  const { mutate: setRead } = useSetRead();
+  const { mutate: setFavorite } = useSetFavorite();
+  const { mutate: markAllReadMutate } = useMarkAllRead();
+  const { mutate: markAllUnreadMutate } = useMarkAllUnread();
+
+  const startRefreshAll = useCallback(() => {
+    if (!refreshAllPending) refreshAllMutate();
+  }, [refreshAllPending, refreshAllMutate]);
+
+  // Event listeners are registered once and call the latest refresh through this ref.
+  const startRefreshAllRef = useRef(startRefreshAll);
+  useLayoutEffect(() => {
+    startRefreshAllRef.current = startRefreshAll;
+  });
+
+  // Refresh all feeds on launch. The ref guards against StrictMode's double effect run.
+  const hasRefreshed = useRef(false);
   useEffect(() => {
-    if (!hasRefreshed.current) {
-      hasRefreshed.current = true;
-      refreshAll.mutate();
-    }
+    if (hasRefreshed.current) return;
+    hasRefreshed.current = true;
+    startRefreshAllRef.current();
   }, []);
 
-  // Listen for new-articles event and show notification
   useEffect(() => {
     const unlisten = listen<{ total: number; feeds: number }>("new-articles", async (event) => {
       let granted = await isNotificationPermissionGranted();
-      if (!granted) {
-        granted = await requestNotificationPermission();
-      }
+      if (!granted) granted = await requestNotificationPermission();
       if (granted) {
-        sendNotification(
+        await sendNotification(
           "Boke",
           `${event.payload.total} new articles from ${event.payload.feeds} feeds`
         );
       }
     });
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten.then((stop) => stop()).catch(logError("Failed to remove listener"));
     };
   }, []);
 
-  // Listen for tray refresh event
   useEffect(() => {
-    const unlisten = listen("tray-refresh", () => {
-      refreshAll.mutate();
-    });
+    const unlisten = listen("tray-refresh", () => startRefreshAllRef.current());
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten.then((stop) => stop()).catch(logError("Failed to remove listener"));
     };
-  }, [refreshAll]);
+  }, []);
 
-  // Cmd+K / Ctrl+K / "/" for search
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setShowSearch(true);
-        return;
-      }
-      // "/" opens search when not in an input/dialog
-      if (
-        e.key === "/" &&
-        !e.metaKey &&
-        !e.ctrlKey &&
-        !e.shiftKey &&
-        !showSearch &&
-        !showAddFeed &&
-        !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
-      ) {
-        e.preventDefault();
-        setShowSearch(true);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showSearch, showAddFeed]);
+  const patchSelection = useCallback((id: number, patch: Partial<ArticleListItem>) => {
+    setSelection((current) => (current?.id === id ? { ...current, ...patch } : current));
+  }, []);
 
   const handleSelectArticle = useCallback(
-    (article: Article) => {
-      setSelectedArticle(article);
-      if (!article.is_read) {
-        toggleRead.mutate(article.id);
+    (article: ArticleListItem) => {
+      if (article.is_read) {
+        setSelection(article);
+        return;
       }
+      setSelection({ ...article, is_read: true });
+      setRead({ article, isRead: true });
     },
-    [toggleRead]
+    [setRead]
   );
 
-  const handleToggleArticleList = useCallback(() => {
-    setArticleListVisible((v) => !v);
+  const handleClearArticle = useCallback(() => setSelection(null), []);
+
+  const handleToggleRead = useCallback(
+    (article: ArticleListItem) => {
+      const isRead = !article.is_read;
+      setRead({ article, isRead });
+      patchSelection(article.id, { is_read: isRead });
+    },
+    [setRead, patchSelection]
+  );
+
+  const handleToggleFavorite = useCallback(
+    (article: ArticleListItem) => {
+      const isFavorite = !article.is_favorite;
+      setFavorite({ article, isFavorite });
+      patchSelection(article.id, { is_favorite: isFavorite });
+    },
+    [setFavorite, patchSelection]
+  );
+
+  const handleSelectFeed = useCallback((feedId: number | null) => {
+    setActiveFeedId(feedId);
+    if (feedId !== null) setActiveFilter("all");
+    setSelectedIndex(0);
   }, []);
+
+  const handleSelectFilter = useCallback((filter: ArticleFilter) => {
+    setActiveFilter(filter);
+    setActiveFeedId(null);
+    setSelectedIndex(0);
+  }, []);
+
+  const handleMarkAllRead = useCallback(() => {
+    markAllReadMutate({ feedId: activeFeedId, favoritesOnly: activeFilter === "favourites" });
+  }, [markAllReadMutate, activeFeedId, activeFilter]);
+
+  const handleMarkAllUnread = useCallback(() => {
+    markAllUnreadMutate({ feedId: activeFeedId, favoritesOnly: activeFilter === "favourites" });
+  }, [markAllUnreadMutate, activeFeedId, activeFilter]);
+
+  const handleRefreshCurrent = useCallback(() => {
+    if (activeFeedId !== null) refreshFeedMutate(activeFeedId);
+    else startRefreshAll();
+  }, [activeFeedId, refreshFeedMutate, startRefreshAll]);
+
+  const handleLoadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage().catch(logError("Failed to load more articles"));
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  const handleOpenInBrowser = useCallback((url: string) => {
+    openUrl(url).catch(logError("Failed to open URL"));
+  }, []);
+
+  const handleToggleArticleList = useCallback(() => setArticleListVisible((v) => !v), []);
+  const openAddFeed = useCallback(() => setShowAddFeed(true), []);
+  const closeAddFeed = useCallback(() => setShowAddFeed(false), []);
+  const openSearch = useCallback(() => setShowSearch(true), []);
+  const closeSearch = useCallback(() => setShowSearch(false), []);
 
   const toggleFolderCollapsed = useCallback((folderId: number) => {
     setCollapsedFolders((prev) => {
@@ -144,53 +211,35 @@ export default function App() {
     [feeds, folders, collapsedFolders]
   );
 
-  const {
+  const { focusZone, sidebarIndex, showShortcuts, setShowShortcuts } = useKeyboardNav({
+    articles,
     selectedIndex,
     setSelectedIndex,
-    focusZone,
-    sidebarIndex,
-    showShortcuts,
-    setShowShortcuts,
-  } = useKeyboardNav({
-    articles: articles ?? [],
     selectedArticle,
-    feeds: feeds ?? [],
     activeFeedId,
     activeFilter,
     readerRef,
     disabled: showSearch || showAddFeed,
     sidebarItems,
     onSelectArticle: handleSelectArticle,
-    onClearArticle: () => setSelectedArticle(null),
-    onSelectFeed: (feedId) => {
-      setActiveFeedId(feedId);
-      if (feedId !== null) setActiveFilter("all");
-      setSelectedIndex(0);
-    },
-    onSelectFilter: (filter) => {
-      setActiveFilter(filter);
-      setActiveFeedId(null);
-      setSelectedIndex(0);
-    },
+    onClearArticle: handleClearArticle,
+    onSelectFeed: handleSelectFeed,
+    onSelectFilter: handleSelectFilter,
     onToggleFolder: toggleFolderCollapsed,
-    onToggleRead: (id) => toggleRead.mutate(id),
-    onToggleFavorite: (id) => toggleFavorite.mutate(id),
-    onOpenInBrowser: (url) => openUrl(url),
-    onRefreshFeed: () => {
-      if (activeFeedId) refreshFeed.mutate(activeFeedId);
-      else refreshAll.mutate();
-    },
-    onRefreshAll: () => refreshAll.mutate(),
-    onMarkAllRead: () => markAllRead.mutate(activeFeedId),
-    onOpenAddFeed: () => setShowAddFeed(true),
-    onOpenSearch: () => setShowSearch(true),
+    onToggleRead: handleToggleRead,
+    onToggleFavorite: handleToggleFavorite,
+    onOpenInBrowser: handleOpenInBrowser,
+    onRefreshFeed: handleRefreshCurrent,
+    onRefreshAll: startRefreshAll,
+    onMarkAllRead: handleMarkAllRead,
+    onOpenAddFeed: openAddFeed,
+    onOpenSearch: openSearch,
     onToggleArticleList: handleToggleArticleList,
+    onLoadMore: handleLoadMore,
   });
 
-  // Reset index when feed or filter changes
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [activeFeedId, activeFilter, setSelectedIndex]);
+  const openHelp = useCallback(() => setShowShortcuts(true), [setShowShortcuts]);
+  const closeHelp = useCallback(() => setShowShortcuts(false), [setShowShortcuts]);
 
   const gridColumns = articleListVisible
     ? `${SIDEBAR_WIDTH}px ${ARTICLE_LIST_WIDTH}px 1fr`
@@ -203,20 +252,14 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         activeFeedId={activeFeedId}
-        onSelectFeed={(feedId) => {
-          setActiveFeedId(feedId);
-          if (feedId !== null) setActiveFilter("all");
-        }}
+        onSelectFeed={handleSelectFeed}
         activeFilter={activeFilter}
-        onSelectFilter={(filter) => {
-          setActiveFilter(filter);
-          setActiveFeedId(null);
-          setSelectedIndex(0);
-        }}
+        onSelectFilter={handleSelectFilter}
+        onRefreshAll={startRefreshAll}
         showAddFeed={showAddFeed}
-        onOpenAddFeed={() => setShowAddFeed(true)}
-        onCloseAddFeed={() => setShowAddFeed(false)}
-        onOpenHelp={() => setShowShortcuts(true)}
+        onOpenAddFeed={openAddFeed}
+        onCloseAddFeed={closeAddFeed}
+        onOpenHelp={openHelp}
         articleListVisible={articleListVisible}
         onToggleArticleList={handleToggleArticleList}
         collapsedFolders={collapsedFolders}
@@ -227,29 +270,31 @@ export default function App() {
       />
       <ArticleList
         visible={articleListVisible}
-        articles={articles ?? []}
-        articlesLoading={articlesLoading}
-        articlesError={articlesErr ? String(articlesErr) : null}
-        refreshError={refreshAll.error ? String(refreshAll.error) : null}
+        articles={articles}
+        articlesLoading={articlesQuery.isPending}
+        articlesError={articlesQuery.error ? String(articlesQuery.error) : null}
+        refreshError={describeRefreshFailure(refreshAll.error, refreshAll.data)}
+        hasFeeds={(feeds?.length ?? 0) > 0}
+        hasMore={hasNextPage}
+        loadingMore={isFetchingNextPage}
         selectedArticleId={selectedArticle?.id ?? null}
         selectedIndex={selectedArticle ? -1 : selectedIndex}
         onSelectArticle={handleSelectArticle}
-        onToggleFavorite={(id) => toggleFavorite.mutate(id)}
-        onToggleRead={(id) => toggleRead.mutate(id)}
-        onMarkAllRead={() => markAllRead.mutate(activeFeedId)}
-        onMarkAllUnread={() => markAllUnread.mutate(activeFeedId)}
+        onToggleFavorite={handleToggleFavorite}
+        onToggleRead={handleToggleRead}
+        onMarkAllRead={handleMarkAllRead}
+        onMarkAllUnread={handleMarkAllUnread}
+        onLoadMore={handleLoadMore}
       />
       <ReaderPane
         article={selectedArticle}
         readerRef={readerRef}
-        onToggleFavorite={(id) => toggleFavorite.mutate(id)}
-        onToggleRead={(id) => toggleRead.mutate(id)}
+        onToggleFavorite={handleToggleFavorite}
+        onToggleRead={handleToggleRead}
         theme={theme}
       />
-      {showSearch && (
-        <SearchBar onSelectArticle={handleSelectArticle} onClose={() => setShowSearch(false)} />
-      )}
-      {showShortcuts && <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />}
+      {showSearch && <SearchBar onSelectArticle={handleSelectArticle} onClose={closeSearch} />}
+      {showShortcuts && <KeyboardShortcuts onClose={closeHelp} />}
     </div>
   );
 }

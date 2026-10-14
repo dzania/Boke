@@ -103,6 +103,11 @@ body,
   height: auto;
 }
 
+/* Images that failed to load collapse instead of showing a broken-image icon. */
+.reader-content img.img-broken {
+  display: none;
+}
+
 .reader-content blockquote {
   border-left: 2px solid var(--color-accent);
   padding-left: 1rem;

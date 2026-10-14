@@ -7,14 +7,14 @@ const SHORTCUTS = [
     section: "Navigation",
     bindings: [
       { key: "h", desc: "Focus sidebar" },
-      { key: "l", desc: "Focus article list" },
+      { key: "l", desc: "Open sidebar item, back to list" },
       { key: "j / ↓", desc: "Next item / scroll down in reader" },
       { key: "k / ↑", desc: "Previous item / scroll up in reader" },
       { key: "Enter / o", desc: "Open selected article / select sidebar item" },
       { key: "Escape", desc: "Close reader / exit sidebar / close dialog" },
       { key: "g g", desc: "Jump to top of list" },
       { key: "G", desc: "Jump to bottom of list" },
-      { key: "1-9", desc: "Switch to nth feed" },
+      { key: "1-9", desc: "Switch to nth feed in the sidebar" },
     ],
   },
   {
@@ -44,7 +44,7 @@ const SHORTCUTS = [
 
 const TIPS = [
   "Paste any blog URL — Boke auto-discovers the RSS feed.",
-  "Right-click a feed to move it to a folder.",
+  "Drag a feed onto a folder to move it there.",
   "Articles are fetched in full when the feed only provides a summary.",
   "Your theme preference is saved between sessions.",
 ];

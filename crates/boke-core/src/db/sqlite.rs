@@ -3,8 +3,11 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{QueryBuilder, Sqlite, SqlitePool};
 use std::str::FromStr;
 
-use super::{Database, DbResult, InsertResult};
-use crate::models::{Article, ArticleQuery, Feed, FeedWithMeta, Folder, NewArticle, NewFeed};
+use super::{Database, DbResult};
+use crate::models::{
+    Article, ArticleListItem, ArticleQuery, ArticleScope, Feed, FeedWithMeta, Folder, NewArticle,
+    NewFeed,
+};
 
 #[derive(Clone)]
 pub struct SqliteDatabase {
@@ -77,6 +80,7 @@ CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id);
 CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_articles_unread ON articles(feed_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_articles_favorite ON articles(is_favorite) WHERE is_favorite = 1;
+CREATE INDEX IF NOT EXISTS idx_articles_feed_published ON articles(feed_id, published_at DESC);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
     title,
@@ -95,7 +99,10 @@ CREATE TRIGGER IF NOT EXISTS articles_ad AFTER DELETE ON articles BEGIN
     VALUES ('delete', old.id, old.title, old.content);
 END;
 
-CREATE TRIGGER IF NOT EXISTS articles_au AFTER UPDATE ON articles BEGIN
+-- Only re-index when indexed columns change. Older databases had an unconditional trigger that
+-- rewrote the FTS rows on every read/favourite toggle, so drop and recreate it.
+DROP TRIGGER IF EXISTS articles_au;
+CREATE TRIGGER articles_au AFTER UPDATE OF title, content ON articles BEGIN
     INSERT INTO articles_fts(articles_fts, rowid, title, content)
     VALUES ('delete', old.id, old.title, old.content);
     INSERT INTO articles_fts(rowid, title, content)
@@ -197,30 +204,32 @@ impl Database for SqliteDatabase {
         Ok(result)
     }
 
-    async fn insert_article(&self, article: &NewArticle) -> DbResult<InsertResult> {
-        let result = sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO articles (feed_id, guid, title, link, author, summary, content, image_url, published_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
-        )
-        .bind(article.feed_id)
-        .bind(&article.guid)
-        .bind(&article.title)
-        .bind(&article.link)
-        .bind(&article.author)
-        .bind(&article.summary)
-        .bind(&article.content)
-        .bind(&article.image_url)
-        .bind(article.published_at)
-        .execute(&self.pool)
-        .await?;
-
-        if result.rows_affected() > 0 {
-            Ok(InsertResult::Inserted(result.last_insert_rowid()))
-        } else {
-            Ok(InsertResult::Ignored)
+    async fn insert_articles(&self, articles: &[NewArticle]) -> DbResult<u64> {
+        let mut tx = self.pool.begin().await?;
+        let mut inserted_count: u64 = 0;
+        for article in articles {
+            let result = sqlx::query(
+                r#"
+                INSERT OR IGNORE INTO articles (feed_id, guid, title, link, author, summary, content, image_url, published_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind(article.feed_id)
+            .bind(&article.guid)
+            .bind(&article.title)
+            .bind(&article.link)
+            .bind(&article.author)
+            .bind(&article.summary)
+            .bind(&article.content)
+            .bind(&article.image_url)
+            .bind(article.published_at)
+            .execute(&mut *tx)
+            .await?;
+            inserted_count += result.rows_affected();
         }
+        tx.commit().await?;
+        assert!(inserted_count <= articles.len() as u64);
+        Ok(inserted_count)
     }
 
     async fn get_article(&self, id: i64) -> DbResult<Option<Article>> {
@@ -229,7 +238,8 @@ impl Database for SqliteDatabase {
             SELECT
                 a.id, a.feed_id, a.guid, a.title, a.link, a.author, a.summary, a.content,
                 a.image_url, a.published_at, a.is_read, a.is_favorite, a.created_at,
-                f.title as feed_title, f.favicon_url as feed_favicon_url
+                f.title as feed_title, f.favicon_url as feed_favicon_url,
+                f.site_url as feed_site_url
             FROM articles a
             JOIN feeds f ON a.feed_id = f.id
             WHERE a.id = ?
@@ -242,13 +252,14 @@ impl Database for SqliteDatabase {
         Ok(article.map(|a| a.into()))
     }
 
-    async fn get_articles(&self, query: &ArticleQuery) -> DbResult<Vec<Article>> {
+    async fn get_articles(&self, query: &ArticleQuery) -> DbResult<Vec<ArticleListItem>> {
         let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
             r#"
             SELECT
-                a.id, a.feed_id, a.guid, a.title, a.link, a.author, a.summary, a.content,
+                a.id, a.feed_id, a.title, a.link, a.author,
                 a.image_url, a.published_at, a.is_read, a.is_favorite, a.created_at,
-                f.title as feed_title, f.favicon_url as feed_favicon_url
+                f.title as feed_title, f.favicon_url as feed_favicon_url,
+                f.site_url as feed_site_url
             FROM articles a
             JOIN feeds f ON a.feed_id = f.id
             WHERE 1=1
@@ -268,66 +279,47 @@ impl Database for SqliteDatabase {
             qb.push(" AND a.is_favorite = 1");
         }
 
-        qb.push(" ORDER BY a.published_at DESC NULLS LAST, a.created_at DESC");
+        // `a.id` makes the order total, so offset pages never overlap or skip rows on ties.
+        qb.push(" ORDER BY a.published_at DESC NULLS LAST, a.created_at DESC, a.id DESC");
         qb.push(" LIMIT ");
         qb.push_bind(query.limit);
         qb.push(" OFFSET ");
         qb.push_bind(query.offset);
 
         let articles = qb
-            .build_query_as::<ArticleRow>()
+            .build_query_as::<ArticleListRow>()
             .fetch_all(&self.pool)
             .await?;
 
         Ok(articles.into_iter().map(|a| a.into()).collect())
     }
 
-    async fn toggle_read(&self, id: i64) -> DbResult<()> {
-        sqlx::query(
-            "UPDATE articles SET is_read = CASE WHEN is_read = 0 THEN 1 ELSE 0 END WHERE id = ?",
-        )
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
+    async fn set_read(&self, id: i64, is_read: bool) -> DbResult<()> {
+        sqlx::query("UPDATE articles SET is_read = ? WHERE id = ? AND is_read != ?")
+            .bind(is_read)
+            .bind(id)
+            .bind(is_read)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
-    async fn mark_all_read(&self, feed_id: Option<i64>) -> DbResult<()> {
-        if let Some(fid) = feed_id {
-            sqlx::query("UPDATE articles SET is_read = 1 WHERE feed_id = ?")
-                .bind(fid)
-                .execute(&self.pool)
-                .await?;
-        } else {
-            sqlx::query("UPDATE articles SET is_read = 1")
-                .execute(&self.pool)
-                .await?;
-        }
+    async fn set_favorite(&self, id: i64, is_favorite: bool) -> DbResult<()> {
+        sqlx::query("UPDATE articles SET is_favorite = ? WHERE id = ? AND is_favorite != ?")
+            .bind(is_favorite)
+            .bind(id)
+            .bind(is_favorite)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
-    async fn mark_all_unread(&self, feed_id: Option<i64>) -> DbResult<()> {
-        if let Some(fid) = feed_id {
-            sqlx::query("UPDATE articles SET is_read = 0 WHERE feed_id = ?")
-                .bind(fid)
-                .execute(&self.pool)
-                .await?;
-        } else {
-            sqlx::query("UPDATE articles SET is_read = 0")
-                .execute(&self.pool)
-                .await?;
-        }
-        Ok(())
+    async fn mark_all_read(&self, scope: ArticleScope) -> DbResult<()> {
+        set_read_in_scope(&self.pool, scope, true).await
     }
 
-    async fn toggle_favorite(&self, id: i64) -> DbResult<()> {
-        sqlx::query(
-            "UPDATE articles SET is_favorite = CASE WHEN is_favorite = 0 THEN 1 ELSE 0 END WHERE id = ?",
-        )
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
-        Ok(())
+    async fn mark_all_unread(&self, scope: ArticleScope) -> DbResult<()> {
+        set_read_in_scope(&self.pool, scope, false).await
     }
 
     async fn get_favorites_count(&self) -> DbResult<i64> {
@@ -338,13 +330,17 @@ impl Database for SqliteDatabase {
         Ok(count)
     }
 
-    async fn search_articles(&self, query: &str, limit: i64) -> DbResult<Vec<Article>> {
-        let articles = sqlx::query_as::<_, ArticleRow>(
+    async fn search_articles(&self, query: &str, limit: i64) -> DbResult<Vec<ArticleListItem>> {
+        let Some(match_expression) = fts5_match_expression(query) else {
+            return Ok(Vec::new());
+        };
+        let articles = sqlx::query_as::<_, ArticleListRow>(
             r#"
             SELECT
-                a.id, a.feed_id, a.guid, a.title, a.link, a.author, a.summary, a.content,
+                a.id, a.feed_id, a.title, a.link, a.author,
                 a.image_url, a.published_at, a.is_read, a.is_favorite, a.created_at,
-                f.title as feed_title, f.favicon_url as feed_favicon_url
+                f.title as feed_title, f.favicon_url as feed_favicon_url,
+                f.site_url as feed_site_url
             FROM articles a
             JOIN feeds f ON a.feed_id = f.id
             JOIN articles_fts fts ON a.id = fts.rowid
@@ -353,7 +349,7 @@ impl Database for SqliteDatabase {
             LIMIT ?
             "#,
         )
-        .bind(query)
+        .bind(match_expression)
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
@@ -368,14 +364,6 @@ impl Database for SqliteDatabase {
             .execute(&self.pool)
             .await?;
         Ok(())
-    }
-
-    async fn get_article_link(&self, id: i64) -> DbResult<Option<String>> {
-        let result = sqlx::query_scalar::<_, String>("SELECT link FROM articles WHERE id = ?")
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await?;
-        Ok(result)
     }
 
     async fn get_folders(&self) -> DbResult<Vec<Folder>> {
@@ -438,6 +426,54 @@ impl Database for SqliteDatabase {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+}
+
+/// Sets `is_read` on every article in `scope` whose flag differs. The `is_read != ?` guard keeps
+/// the write set to rows that actually change.
+async fn set_read_in_scope(pool: &SqlitePool, scope: ArticleScope, is_read: bool) -> DbResult<()> {
+    let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new("UPDATE articles SET is_read = ");
+    qb.push_bind(is_read);
+    qb.push(" WHERE is_read != ");
+    qb.push_bind(is_read);
+    if let Some(feed_id) = scope.feed_id {
+        qb.push(" AND feed_id = ");
+        qb.push_bind(feed_id);
+    }
+    if scope.favorites_only {
+        qb.push(" AND is_favorite = 1");
+    }
+    qb.build().execute(pool).await?;
+    Ok(())
+}
+
+/// Maximum number of search terms passed to FTS5. Longer queries are truncated.
+const SEARCH_TERMS_MAX: usize = 16;
+
+/// Turns free-form user input into a safe FTS5 `MATCH` expression.
+///
+/// Each whitespace-separated term becomes a quoted string with a prefix wildcard, so that FTS5
+/// operators and punctuation in user input (`c++`, `foo-bar`, a stray `"`) are matched literally
+/// instead of being parsed as query syntax. Returns `None` when the input has no terms.
+fn fts5_match_expression(query: &str) -> Option<String> {
+    let mut expression = String::with_capacity(query.len() + 16);
+    for term in query.split_whitespace().take(SEARCH_TERMS_MAX) {
+        if !expression.is_empty() {
+            expression.push(' ');
+        }
+        expression.push('"');
+        for character in term.chars() {
+            if character == '"' {
+                expression.push('"');
+            }
+            expression.push(character);
+        }
+        expression.push_str("\"*");
+    }
+    if expression.is_empty() {
+        None
+    } else {
+        Some(expression)
     }
 }
 
@@ -531,6 +567,7 @@ struct ArticleRow {
     created_at: Option<chrono::DateTime<chrono::Utc>>,
     feed_title: Option<String>,
     feed_favicon_url: Option<String>,
+    feed_site_url: Option<String>,
 }
 
 impl From<ArticleRow> for Article {
@@ -551,6 +588,44 @@ impl From<ArticleRow> for Article {
             created_at: row.created_at,
             feed_title: row.feed_title,
             feed_favicon_url: row.feed_favicon_url,
+            feed_site_url: row.feed_site_url,
+        }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct ArticleListRow {
+    id: i64,
+    feed_id: i64,
+    title: String,
+    link: Option<String>,
+    author: Option<String>,
+    image_url: Option<String>,
+    published_at: Option<chrono::DateTime<chrono::Utc>>,
+    is_read: i32,
+    is_favorite: i32,
+    created_at: Option<chrono::DateTime<chrono::Utc>>,
+    feed_title: Option<String>,
+    feed_favicon_url: Option<String>,
+    feed_site_url: Option<String>,
+}
+
+impl From<ArticleListRow> for ArticleListItem {
+    fn from(row: ArticleListRow) -> Self {
+        ArticleListItem {
+            id: row.id,
+            feed_id: row.feed_id,
+            title: row.title,
+            link: row.link,
+            author: row.author,
+            image_url: row.image_url,
+            published_at: row.published_at,
+            is_read: row.is_read != 0,
+            is_favorite: row.is_favorite != 0,
+            created_at: row.created_at,
+            feed_title: row.feed_title,
+            feed_favicon_url: row.feed_favicon_url,
+            feed_site_url: row.feed_site_url,
         }
     }
 }
@@ -569,5 +644,305 @@ impl From<FolderRow> for Folder {
             name: row.name,
             feed_count: row.feed_count,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    /// Each test gets its own database file. An in-memory URL would give every pooled connection
+    /// a separate empty database.
+    async fn test_db() -> SqliteDatabase {
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "boke-test-{}-{}.db",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        for suffix in ["", "-wal", "-shm"] {
+            let mut stale = path.clone().into_os_string();
+            stale.push(suffix);
+            // A leftover file from an earlier run is the only expected failure; NotFound is fine.
+            let _ = std::fs::remove_file(stale);
+        }
+        SqliteDatabase::new(&format!("sqlite://{}", path.display()))
+            .await
+            .expect("test database opens")
+    }
+
+    async fn insert_feed(db: &SqliteDatabase, url: &str) -> i64 {
+        db.insert_feed(&NewFeed {
+            title: url.to_string(),
+            folder_id: None,
+            feed_url: url.to_string(),
+            site_url: Some("https://example.com/".to_string()),
+            description: None,
+            language: None,
+            favicon_url: None,
+            last_build_date: None,
+        })
+        .await
+        .expect("feed inserts")
+    }
+
+    fn article(feed_id: i64, guid: &str, title: &str) -> NewArticle {
+        NewArticle {
+            feed_id,
+            guid: guid.to_string(),
+            title: title.to_string(),
+            link: Some(format!("https://example.com/{guid}")),
+            author: None,
+            summary: None,
+            content: Some(format!("<p>{title} body</p>")),
+            image_url: None,
+            published_at: None,
+        }
+    }
+
+    fn list_query(feed_id: Option<i64>, offset: i64, limit: i64) -> ArticleQuery {
+        ArticleQuery {
+            feed_id,
+            offset,
+            limit,
+            unread_only: false,
+            favorites_only: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn insert_articles_counts_only_new_rows() {
+        let db = test_db().await;
+        let feed_id = insert_feed(&db, "https://example.com/feed").await;
+        let batch = [article(feed_id, "a", "A"), article(feed_id, "b", "B")];
+
+        assert_eq!(db.insert_articles(&batch).await.expect("insert"), 2);
+        assert_eq!(db.insert_articles(&batch).await.expect("insert"), 0);
+        assert_eq!(db.insert_articles(&[]).await.expect("insert"), 0);
+    }
+
+    #[tokio::test]
+    async fn list_items_carry_feed_site_url() {
+        let db = test_db().await;
+        let feed_id = insert_feed(&db, "https://example.com/feed").await;
+        db.insert_articles(&[article(feed_id, "a", "A")])
+            .await
+            .expect("insert");
+
+        let items = db
+            .get_articles(&list_query(None, 0, 10))
+            .await
+            .expect("list");
+        assert_eq!(items.len(), 1);
+        assert_eq!(
+            items[0].feed_site_url.as_deref(),
+            Some("https://example.com/")
+        );
+    }
+
+    #[tokio::test]
+    async fn pages_do_not_overlap() {
+        let db = test_db().await;
+        let feed_id = insert_feed(&db, "https://example.com/feed").await;
+        let batch: Vec<_> = (0..7)
+            .map(|index| article(feed_id, &index.to_string(), "Same"))
+            .collect();
+        db.insert_articles(&batch).await.expect("insert");
+
+        let mut seen = Vec::new();
+        for offset in [0, 3, 6] {
+            let page = db
+                .get_articles(&list_query(Some(feed_id), offset, 3))
+                .await
+                .expect("page");
+            seen.extend(page.into_iter().map(|item| item.id));
+        }
+        let mut unique = seen.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(seen.len(), 7);
+        assert_eq!(unique.len(), 7);
+    }
+
+    #[tokio::test]
+    async fn set_read_and_favorite_are_idempotent() {
+        let db = test_db().await;
+        let feed_id = insert_feed(&db, "https://example.com/feed").await;
+        db.insert_articles(&[article(feed_id, "a", "A")])
+            .await
+            .expect("insert");
+        let id = db
+            .get_articles(&list_query(None, 0, 1))
+            .await
+            .expect("list")[0]
+            .id;
+
+        for _ in 0..2 {
+            db.set_read(id, true).await.expect("set read");
+            db.set_favorite(id, true).await.expect("set favorite");
+        }
+        let article = db.get_article(id).await.expect("get").expect("exists");
+        assert!(article.is_read);
+        assert!(article.is_favorite);
+
+        db.set_read(id, false).await.expect("set unread");
+        let article = db.get_article(id).await.expect("get").expect("exists");
+        assert!(!article.is_read);
+    }
+
+    #[tokio::test]
+    async fn search_survives_read_toggles() {
+        let db = test_db().await;
+        let feed_id = insert_feed(&db, "https://example.com/feed").await;
+        db.insert_articles(&[article(feed_id, "a", "Rustacean news")])
+            .await
+            .expect("insert");
+        let id = db
+            .get_articles(&list_query(None, 0, 1))
+            .await
+            .expect("list")[0]
+            .id;
+
+        db.set_read(id, true).await.expect("read");
+        db.set_favorite(id, true).await.expect("favorite");
+        db.mark_all_unread(ArticleScope::default())
+            .await
+            .expect("mark unread");
+
+        let hits = db.search_articles("rustac", 10).await.expect("search");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, id);
+    }
+
+    #[tokio::test]
+    async fn search_after_content_update_uses_new_content() {
+        let db = test_db().await;
+        let feed_id = insert_feed(&db, "https://example.com/feed").await;
+        db.insert_articles(&[article(feed_id, "a", "Title")])
+            .await
+            .expect("insert");
+        let id = db
+            .get_articles(&list_query(None, 0, 1))
+            .await
+            .expect("list")[0]
+            .id;
+
+        db.update_article_content(id, "<p>zeppelin</p>")
+            .await
+            .expect("update");
+        assert_eq!(
+            db.search_articles("zeppelin", 10)
+                .await
+                .expect("search")
+                .len(),
+            1
+        );
+        assert!(
+            db.search_articles("body", 10)
+                .await
+                .expect("search")
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn search_accepts_fts_syntax_characters() {
+        let db = test_db().await;
+        let feed_id = insert_feed(&db, "https://example.com/feed").await;
+        db.insert_articles(&[article(feed_id, "a", "Modern c++ tips")])
+            .await
+            .expect("insert");
+
+        for query in ["c++", "\"", "foo-bar", "AND", "title:x", "(", "*"] {
+            db.search_articles(query, 10)
+                .await
+                .unwrap_or_else(|error| panic!("query {query:?} failed: {error}"));
+        }
+        assert!(
+            db.search_articles("   ", 10)
+                .await
+                .expect("empty")
+                .is_empty()
+        );
+        assert_eq!(
+            db.search_articles("modern tips", 10)
+                .await
+                .expect("search")
+                .len(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn mark_all_read_respects_scope() {
+        let db = test_db().await;
+        let feed_a = insert_feed(&db, "https://a.example.com/feed").await;
+        let feed_b = insert_feed(&db, "https://b.example.com/feed").await;
+        db.insert_articles(&[article(feed_a, "1", "A1"), article(feed_a, "2", "A2")])
+            .await
+            .expect("insert");
+        db.insert_articles(&[article(feed_b, "1", "B1")])
+            .await
+            .expect("insert");
+        let favourite_id = db
+            .get_articles(&list_query(Some(feed_a), 0, 1))
+            .await
+            .expect("list")[0]
+            .id;
+        db.set_favorite(favourite_id, true).await.expect("favorite");
+
+        db.mark_all_read(ArticleScope {
+            feed_id: None,
+            favorites_only: true,
+        })
+        .await
+        .expect("mark favourites read");
+        let unread = |items: Vec<ArticleListItem>| items.iter().filter(|i| !i.is_read).count();
+        assert_eq!(
+            unread(
+                db.get_articles(&list_query(None, 0, 10))
+                    .await
+                    .expect("list")
+            ),
+            2
+        );
+
+        db.mark_all_read(ArticleScope {
+            feed_id: Some(feed_b),
+            favorites_only: false,
+        })
+        .await
+        .expect("mark feed b read");
+        assert_eq!(
+            unread(
+                db.get_articles(&list_query(None, 0, 10))
+                    .await
+                    .expect("list")
+            ),
+            1
+        );
+        assert_eq!(
+            unread(
+                db.get_articles(&list_query(Some(feed_a), 0, 10))
+                    .await
+                    .expect("list")
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn fts5_match_expression_quotes_terms() {
+        assert_eq!(fts5_match_expression(""), None);
+        assert_eq!(fts5_match_expression(" \t"), None);
+        assert_eq!(fts5_match_expression("c++").as_deref(), Some("\"c++\"*"));
+        assert_eq!(
+            fts5_match_expression("say \"hi\"").as_deref(),
+            Some("\"say\"* \"\"\"hi\"\"\"*")
+        );
+        let many = "x ".repeat(SEARCH_TERMS_MAX + 5);
+        let expression = fts5_match_expression(&many).expect("terms");
+        assert_eq!(expression.matches('*').count(), SEARCH_TERMS_MAX);
     }
 }

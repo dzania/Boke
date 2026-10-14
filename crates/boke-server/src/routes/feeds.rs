@@ -7,7 +7,7 @@ use axum::{
 };
 use axum_extra::extract::Multipart;
 use boke_core::models::FeedWithMeta;
-use boke_core::parse_opml;
+use boke_core::{RefreshResult, parse_opml};
 use serde::{Deserialize, Serialize};
 
 // Feed handlers
@@ -38,36 +38,19 @@ pub async fn remove_feed(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[derive(Serialize)]
-pub struct RefreshResult {
-    feed_id: i64,
-    new_articles: i64,
-}
-
 pub async fn refresh_feed(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Json<RefreshResult>, ApiError> {
     let result = state.feed_service.refresh_feed(id).await?;
-    Ok(Json(RefreshResult {
-        feed_id: result.feed_id,
-        new_articles: result.new_articles,
-    }))
+    Ok(Json(result))
 }
 
 pub async fn refresh_all_feeds(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<RefreshResult>>, ApiError> {
     let results = state.feed_service.refresh_all_feeds().await?;
-    Ok(Json(
-        results
-            .into_iter()
-            .map(|r| RefreshResult {
-                feed_id: r.feed_id,
-                new_articles: r.new_articles,
-            })
-            .collect(),
-    ))
+    Ok(Json(results))
 }
 
 #[derive(Serialize)]

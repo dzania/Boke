@@ -1,4 +1,4 @@
-import type { FeedWithMeta, Article, Folder, RefreshResult, DiscoveredFeed } from "../types";
+import type { FeedWithMeta, ArticleListItem, ArticleScope, Folder, RefreshResult } from "../types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 
@@ -53,7 +53,7 @@ export function getArticles(
   limit: number,
   unreadOnly: boolean,
   favoritesOnly: boolean
-): Promise<Article[]> {
+): Promise<ArticleListItem[]> {
   const params = new URLSearchParams({
     offset: String(offset),
     limit: String(limit),
@@ -66,46 +66,46 @@ export function getArticles(
   return request(`/articles?${params}`);
 }
 
-export function getArticle(articleId: number): Promise<Article> {
-  return request(`/articles/${articleId}`);
+export function getArticleContent(articleId: number): Promise<string> {
+  return request<{ content: string }>(`/articles/${articleId}/content`).then((r) => r.content);
 }
 
-export function toggleRead(articleId: number): Promise<void> {
-  return request(`/articles/${articleId}/read`, { method: "POST" });
-}
-
-export function markAllRead(feedId: number | null): Promise<void> {
-  return request("/articles/mark-read", {
-    method: "POST",
-    body: JSON.stringify({ feed_id: feedId }),
+export function setRead(articleId: number, isRead: boolean): Promise<void> {
+  return request(`/articles/${articleId}/read`, {
+    method: "PUT",
+    body: JSON.stringify({ value: isRead }),
   });
 }
 
-export function markAllUnread(feedId: number | null): Promise<void> {
-  return request("/articles/mark-unread", {
-    method: "POST",
-    body: JSON.stringify({ feed_id: feedId }),
+export function setFavorite(articleId: number, isFavorite: boolean): Promise<void> {
+  return request(`/articles/${articleId}/favorite`, {
+    method: "PUT",
+    body: JSON.stringify({ value: isFavorite }),
   });
 }
 
-export function toggleFavorite(articleId: number): Promise<void> {
-  return request(`/articles/${articleId}/favorite`, { method: "POST" });
+function scopeBody(scope: ArticleScope): string {
+  return JSON.stringify({ feed_id: scope.feedId, favorites_only: scope.favoritesOnly });
+}
+
+export function markAllRead(scope: ArticleScope): Promise<void> {
+  return request("/articles/mark-read", { method: "POST", body: scopeBody(scope) });
+}
+
+export function markAllUnread(scope: ArticleScope): Promise<void> {
+  return request("/articles/mark-unread", { method: "POST", body: scopeBody(scope) });
 }
 
 export function getFavoritesCount(): Promise<number> {
   return request<{ count: number }>("/articles/favorites/count").then((r) => r.count);
 }
 
-export function searchArticles(query: string, limit: number): Promise<Article[]> {
+export function searchArticles(query: string, limit: number): Promise<ArticleListItem[]> {
   const params = new URLSearchParams({
     q: query,
     limit: String(limit),
   });
   return request(`/articles/search?${params}`);
-}
-
-export function fetchArticleContent(articleId: number): Promise<string> {
-  return request<{ content: string }>(`/articles/${articleId}/content`).then((r) => r.content);
 }
 
 export function getFolders(): Promise<Folder[]> {
@@ -132,22 +132,18 @@ export function deleteFolder(folderId: number): Promise<void> {
 
 export function moveFeedToFolder(feedId: number, folderId: number | null): Promise<void> {
   if (folderId === null) {
-    // Moving to root - use a special endpoint or handle differently
-    return request(`/feeds/${feedId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ folder_id: null }),
-    });
+    return request(`/feeds/${feedId}/folder`, { method: "DELETE" });
   }
   return request(`/folders/${folderId}/feeds/${feedId}`, { method: "PUT" });
 }
 
-// OPML import in web mode uses file upload
 export interface ImportResult {
   added: number;
   skipped: number;
   errors: string[];
 }
 
+// OPML import in web mode uses file upload
 export async function importOpml(file: File): Promise<ImportResult> {
   const formData = new FormData();
   formData.append("file", file);
@@ -163,19 +159,4 @@ export async function importOpml(file: File): Promise<ImportResult> {
   }
 
   return response.json();
-}
-
-// These are not available in web mode
-export function discoverFeed(_url: string): Promise<DiscoveredFeed[]> {
-  throw new Error("discoverFeed is only available in desktop mode");
-}
-
-export function getSetting(_key: string): Promise<string | null> {
-  // Settings in web mode could use localStorage
-  return Promise.resolve(null);
-}
-
-export function setSetting(_key: string, _value: string): Promise<void> {
-  // Settings in web mode could use localStorage
-  return Promise.resolve();
 }
