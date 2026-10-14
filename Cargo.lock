@@ -379,9 +379,10 @@ dependencies = [
 
 [[package]]
 name = "boke"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "boke-core",
+ "log",
  "serde",
  "serde_json",
  "tauri",
@@ -394,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "boke-core"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -413,7 +414,7 @@ dependencies = [
 
 [[package]]
 name = "boke-server"
-version = "0.1.0"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "axum",

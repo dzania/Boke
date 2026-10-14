@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as api from "../lib/api";
 
 export function useFeeds() {
@@ -51,13 +51,21 @@ export function useRefreshFeed() {
   });
 }
 
+/** Shared key so any component can observe a running "refresh all" via `useIsMutating`. */
+export const REFRESH_ALL_MUTATION_KEY = ["refresh-all"] as const;
+
 export function useRefreshAllFeeds() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: REFRESH_ALL_MUTATION_KEY,
     mutationFn: () => api.refreshAllFeeds(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["feeds"] });
       queryClient.invalidateQueries({ queryKey: ["articles"] });
     },
   });
+}
+
+export function useIsRefreshingAll(): boolean {
+  return useIsMutating({ mutationKey: REFRESH_ALL_MUTATION_KEY }) > 0;
 }

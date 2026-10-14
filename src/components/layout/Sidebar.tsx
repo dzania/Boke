@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef, useMemo } from "react";
-import { useFeeds, useRefreshAllFeeds, useRemoveFeed } from "../../api/feeds";
+import { memo, useEffect, useState, useRef, useMemo } from "react";
+import { useFeeds, useIsRefreshingAll, useRemoveFeed } from "../../api/feeds";
 import { useFavoritesCount } from "../../api/articles";
 import {
   useFolders,
@@ -9,10 +9,10 @@ import {
 } from "../../api/folders";
 import AddFeedDialog from "../feed/AddFeedDialog";
 import { FeedListSkeleton } from "../ui/Skeleton";
-import type { FeedWithMeta, SidebarItem } from "../../types";
+import type { ArticleFilter, FeedWithMeta, SidebarItem } from "../../types";
 import type { FocusZone } from "../../hooks/useKeyboardNav";
 
-type FilterType = "all" | "unread" | "favourites";
+type FilterType = ArticleFilter;
 
 interface SidebarProps {
   theme: "light" | "dark";
@@ -21,6 +21,7 @@ interface SidebarProps {
   onSelectFeed: (feedId: number | null) => void;
   activeFilter: FilterType;
   onSelectFilter: (filter: FilterType) => void;
+  onRefreshAll: () => void;
   showAddFeed: boolean;
   onOpenAddFeed: () => void;
   onCloseAddFeed: () => void;
@@ -41,7 +42,6 @@ function SmartGroupButton({
   badge,
   onClick,
   highlighted,
-  highlightRef,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -49,12 +49,11 @@ function SmartGroupButton({
   badge?: number;
   onClick: () => void;
   highlighted?: boolean;
-  highlightRef?: React.RefCallback<HTMLElement>;
 }) {
   return (
     <button
       type="button"
-      ref={highlighted ? highlightRef : undefined}
+      data-sidebar-highlighted={highlighted || undefined}
       className="w-full flex items-center justify-between px-3 py-1.5 rounded-md text-sm transition-colors mt-0.5"
       style={{
         backgroundColor: active || highlighted ? "var(--color-bg-secondary)" : "transparent",
@@ -78,13 +77,14 @@ function SmartGroupButton({
   );
 }
 
-export default function Sidebar({
+function Sidebar({
   theme,
   onToggleTheme,
   activeFeedId,
   onSelectFeed,
   activeFilter,
   onSelectFilter,
+  onRefreshAll,
   showAddFeed,
   onOpenAddFeed,
   onCloseAddFeed,
@@ -105,7 +105,7 @@ export default function Sidebar({
   const { data: feeds } = useFeeds();
   const { data: folders } = useFolders();
   const { data: favoritesCount } = useFavoritesCount();
-  const refreshAll = useRefreshAllFeeds();
+  const refreshingAll = useIsRefreshingAll();
   const createFolder = useCreateFolder();
   const deleteFolder = useDeleteFolder();
   const moveFeed = useMoveFeedToFolder();
@@ -128,27 +128,21 @@ export default function Sidebar({
     return false;
   };
 
-  // Scroll highlighted sidebar item into view via callback ref.
-  // Including sidebarIndex in deps causes React to detach/reattach the ref
-  // on each index change, triggering the scroll logic.
+  // Keep the keyboard-highlighted item visible inside the scrollable feed list.
   const navRef = useRef<HTMLElement | null>(null);
-
-  const highlightRef = useCallback(
-    (node: HTMLElement | null) => {
-      if (!node) return;
-      const scrollable = navRef.current;
-      if (scrollable && scrollable.contains(node)) {
-        const navRect = scrollable.getBoundingClientRect();
-        const elRect = node.getBoundingClientRect();
-        if (elRect.bottom > navRect.bottom) {
-          scrollable.scrollTop += elRect.bottom - navRect.bottom + 4;
-        } else if (elRect.top < navRect.top) {
-          scrollable.scrollTop -= navRect.top - elRect.top + 4;
-        }
-      }
-    },
-    [inSidebar, sidebarIndex]
-  );
+  useEffect(() => {
+    if (!inSidebar) return;
+    const scrollable = navRef.current;
+    const node = scrollable?.querySelector<HTMLElement>("[data-sidebar-highlighted]");
+    if (!scrollable || !node) return;
+    const navRect = scrollable.getBoundingClientRect();
+    const elRect = node.getBoundingClientRect();
+    if (elRect.bottom > navRect.bottom) {
+      scrollable.scrollTop += elRect.bottom - navRect.bottom + 4;
+    } else if (elRect.top < navRect.top) {
+      scrollable.scrollTop -= navRect.top - elRect.top + 4;
+    }
+  }, [inSidebar, sidebarIndex]);
 
   // Group feeds by folder
   const { folderGroups, unfolderedFeeds } = useMemo(() => {
@@ -187,7 +181,7 @@ export default function Sidebar({
     return (
       <div
         key={feed.id}
-        ref={feedHighlighted ? highlightRef : undefined}
+        data-sidebar-highlighted={feedHighlighted || undefined}
         className="flex items-center group/feed mt-0.5 rounded-md transition-colors"
         style={{
           backgroundColor:
@@ -380,8 +374,8 @@ export default function Sidebar({
             className="p-1.5 rounded-md hover:opacity-80 transition-opacity"
             style={{ color: "var(--color-text-secondary)" }}
             title="Refresh all feeds"
-            onClick={() => refreshAll.mutate()}
-            disabled={refreshAll.isPending}
+            onClick={onRefreshAll}
+            disabled={refreshingAll}
           >
             <svg
               width="16"
@@ -390,7 +384,7 @@ export default function Sidebar({
               fill="none"
               stroke="currentColor"
               strokeWidth="1.5"
-              className={refreshAll.isPending ? "animate-spin" : ""}
+              className={refreshingAll ? "animate-spin" : ""}
             >
               <path d="M1 8a7 7 0 0113.24-3.18M15 8A7 7 0 011.76 11.18" />
               <path d="M14.24 1v3.82h-3.82M1.76 15v-3.82h3.82" />
@@ -458,7 +452,6 @@ export default function Sidebar({
           badge={totalUnread > 0 ? totalUnread : undefined}
           onClick={() => onSelectFilter("all")}
           highlighted={isHighlighted({ kind: "filter", filter: "all" })}
-          highlightRef={highlightRef}
         />
         <SmartGroupButton
           icon={
@@ -478,7 +471,6 @@ export default function Sidebar({
           badge={favoritesCount && favoritesCount > 0 ? favoritesCount : undefined}
           onClick={() => onSelectFilter("favourites")}
           highlighted={isHighlighted({ kind: "filter", filter: "favourites" })}
-          highlightRef={highlightRef}
         />
         <SmartGroupButton
           icon={
@@ -499,7 +491,6 @@ export default function Sidebar({
           badge={totalUnread > 0 ? totalUnread : undefined}
           onClick={() => onSelectFilter("unread")}
           highlighted={isHighlighted({ kind: "filter", filter: "unread" })}
-          highlightRef={highlightRef}
         />
       </div>
 
@@ -579,10 +570,8 @@ export default function Sidebar({
             {folderGroups.map(({ folder, feeds: folderFeeds }) => (
               <div key={folder.id} className="mt-1">
                 <div
-                  ref={
-                    isHighlighted({ kind: "folder", folderId: folder.id })
-                      ? highlightRef
-                      : undefined
+                  data-sidebar-highlighted={
+                    isHighlighted({ kind: "folder", folderId: folder.id }) || undefined
                   }
                   className="flex items-center group/folder rounded-md transition-colors"
                   style={{
@@ -763,3 +752,5 @@ export default function Sidebar({
     </aside>
   );
 }
+
+export default memo(Sidebar);

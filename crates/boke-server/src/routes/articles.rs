@@ -5,7 +5,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use boke_core::models::ArticleQuery;
+use boke_core::models::{ArticleQuery, ArticleScope};
 use serde::{Deserialize, Serialize};
 
 // Article handlers
@@ -46,27 +46,34 @@ pub async fn get_article(
     Ok(Json(article))
 }
 
-pub async fn toggle_read(
+#[derive(Deserialize)]
+pub struct FlagRequest {
+    value: bool,
+}
+
+pub async fn set_read(
     State(state): State<AppState>,
     Path(id): Path<i64>,
+    Json(req): Json<FlagRequest>,
 ) -> Result<StatusCode, ApiError> {
-    state.article_service.toggle_read(id).await?;
+    state.article_service.set_read(id, req.value).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-pub async fn toggle_favorite(
+pub async fn set_favorite(
     State(state): State<AppState>,
     Path(id): Path<i64>,
+    Json(req): Json<FlagRequest>,
 ) -> Result<StatusCode, ApiError> {
-    state.article_service.toggle_favorite(id).await?;
+    state.article_service.set_favorite(id, req.value).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-pub async fn fetch_article_content(
+pub async fn get_article_content(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> Result<Json<ContentResponse>, ApiError> {
-    let content = state.article_service.fetch_article_content(id).await?;
+    let content = state.article_service.get_article_content(id).await?;
     Ok(Json(ContentResponse { content }))
 }
 
@@ -75,24 +82,19 @@ pub struct ContentResponse {
     content: String,
 }
 
-#[derive(Deserialize)]
-pub struct MarkAllRequest {
-    feed_id: Option<i64>,
-}
-
 pub async fn mark_all_read(
     State(state): State<AppState>,
-    Json(req): Json<MarkAllRequest>,
+    Json(scope): Json<ArticleScope>,
 ) -> Result<StatusCode, ApiError> {
-    state.article_service.mark_all_read(req.feed_id).await?;
+    state.article_service.mark_all_read(scope).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn mark_all_unread(
     State(state): State<AppState>,
-    Json(req): Json<MarkAllRequest>,
+    Json(scope): Json<ArticleScope>,
 ) -> Result<StatusCode, ApiError> {
-    state.article_service.mark_all_unread(req.feed_id).await?;
+    state.article_service.mark_all_unread(scope).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

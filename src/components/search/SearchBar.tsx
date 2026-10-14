@@ -1,17 +1,19 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchArticles } from "../../api/search";
 import { SEARCH_DEBOUNCE_MS } from "../../lib/constants";
-import type { Article } from "../../types";
+import type { ArticleListItem } from "../../types";
 
 interface SearchBarProps {
-  onSelectArticle: (article: Article) => void;
+  onSelectArticle: (article: ArticleListItem) => void;
   onClose: () => void;
 }
 
 export default function SearchBar({ onSelectArticle, onClose }: SearchBarProps) {
   const [input, setInput] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  // The cursor belongs to one query's results; a new query starts it at the top again.
+  const [cursor, setCursor] = useState({ query: "", index: 0 });
+  const selectedIndex = cursor.query === debouncedQuery ? cursor.index : 0;
   const inputRef = useRef<HTMLInputElement>(null);
   const { data: results } = useSearchArticles(debouncedQuery);
 
@@ -26,10 +28,8 @@ export default function SearchBar({ onSelectArticle, onClose }: SearchBarProps) 
     return () => clearTimeout(timer);
   }, [input]);
 
-  // Reset selection when results change
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [results]);
+  const setSelectedIndex = (update: (index: number) => number) =>
+    setCursor({ query: debouncedQuery, index: update(selectedIndex) });
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
@@ -112,7 +112,7 @@ export default function SearchBar({ onSelectArticle, onClose }: SearchBarProps) 
                   onSelectArticle(article);
                   onClose();
                 }}
-                onMouseEnter={() => setSelectedIndex(i)}
+                onMouseEnter={() => setSelectedIndex(() => i)}
               >
                 <p className="text-sm truncate" style={{ color: "var(--color-text-primary)" }}>
                   {article.title}

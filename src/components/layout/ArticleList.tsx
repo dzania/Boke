@@ -1,28 +1,38 @@
-import { useEffect, useRef } from "react";
-import { useFeeds } from "../../api/feeds";
+import { memo, useEffect, useRef } from "react";
 import { ArticleListSkeleton } from "../ui/Skeleton";
-import type { Article } from "../../types";
+import type { ArticleListItem } from "../../types";
 
 interface ArticleListProps {
-  articles: Article[];
-  articlesLoading?: boolean;
-  articlesError?: string | null;
-  refreshError?: string | null;
+  articles: ArticleListItem[];
+  articlesLoading: boolean;
+  articlesError: string | null;
+  refreshError: string | null;
+  hasFeeds: boolean;
+  hasMore: boolean;
+  loadingMore: boolean;
   selectedArticleId: number | null;
+  /** Keyboard cursor position, or -1 while an article is open. */
   selectedIndex: number;
-  onSelectArticle: (article: Article) => void;
-  onToggleFavorite: (articleId: number) => void;
-  onToggleRead: (articleId: number) => void;
+  onSelectArticle: (article: ArticleListItem) => void;
+  onToggleFavorite: (article: ArticleListItem) => void;
+  onToggleRead: (article: ArticleListItem) => void;
   onMarkAllRead: () => void;
   onMarkAllUnread: () => void;
+  onLoadMore: () => void;
   visible: boolean;
 }
 
-export default function ArticleList({
+/** Start loading the next page this far before the end of the list scrolls into view. */
+const LOAD_MORE_MARGIN_PX = 600;
+
+function ArticleList({
   articles,
   articlesLoading,
   articlesError,
   refreshError,
+  hasFeeds,
+  hasMore,
+  loadingMore,
   selectedArticleId,
   selectedIndex,
   onSelectArticle,
@@ -30,17 +40,32 @@ export default function ArticleList({
   onToggleRead,
   onMarkAllRead,
   onMarkAllUnread,
+  onLoadMore,
   visible,
 }: ArticleListProps) {
-  const { data: feeds } = useFeeds();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const container = scrollRef.current;
-    if (!container || articles.length === 0) return;
+    if (!container || selectedIndex < 0) return;
     const el = container.querySelector(`[data-index="${selectedIndex}"]`);
     if (el) el.scrollIntoView({ block: "nearest" });
-  }, [selectedIndex, articles.length]);
+  }, [selectedIndex]);
+
+  useEffect(() => {
+    const root = scrollRef.current;
+    const sentinel = sentinelRef.current;
+    if (!root || !sentinel || !hasMore || loadingMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) onLoadMore();
+      },
+      { root, rootMargin: `${LOAD_MORE_MARGIN_PX}px` }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, onLoadMore, articles.length]);
 
   if (!visible) return <div />;
 
@@ -135,123 +160,26 @@ export default function ArticleList({
         {articlesLoading ? (
           <ArticleListSkeleton />
         ) : articles.length > 0 ? (
-          articles.map((article, i) => (
-            <div
-              key={article.id}
-              data-index={i}
-              role="listitem"
-              aria-current={selectedArticleId === article.id ? "true" : undefined}
-              className="flex items-center border-b transition-colors group/article"
-              style={{
-                borderColor: "var(--color-border)",
-                backgroundColor:
-                  selectedArticleId === article.id
-                    ? "var(--color-bg-secondary)"
-                    : i === selectedIndex
-                      ? "var(--color-bg-secondary)"
-                      : "transparent",
-                borderLeft:
-                  i === selectedIndex && selectedArticleId !== article.id
-                    ? "2px solid var(--color-accent)"
-                    : "2px solid transparent",
-              }}
-            >
-              <button
-                type="button"
-                className="flex-1 min-w-0 text-left px-4 py-3"
-                onClick={() => onSelectArticle(article)}
-              >
-                <div className="flex items-start gap-2">
-                  {!article.is_read && (
-                    <span
-                      className="w-2 h-2 rounded-full mt-1.5 shrink-0"
-                      style={{ backgroundColor: "var(--color-unread-dot)" }}
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p
-                      className="text-sm truncate"
-                      style={{
-                        color: "var(--color-text-primary)",
-                        fontWeight: article.is_read ? 400 : 600,
-                      }}
-                    >
-                      {article.title}
-                    </p>
-                    <p
-                      className="text-xs mt-0.5 truncate"
-                      style={{ color: "var(--color-text-muted)" }}
-                    >
-                      {article.feed_title}
-                      {article.published_at && ` · ${formatRelativeTime(article.published_at)}`}
-                    </p>
-                  </div>
-                </div>
-              </button>
-              <div className="flex items-center shrink-0 mr-1">
-                <button
-                  type="button"
-                  aria-label={article.is_read ? "Mark as unread" : "Mark as read"}
-                  title={article.is_read ? "Mark as unread" : "Mark as read"}
-                  className="p-1.5 rounded-md transition-opacity"
-                  style={{ color: "var(--color-text-muted)" }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleRead(article.id);
-                  }}
-                >
-                  {article.is_read ? (
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                    >
-                      <circle cx="8" cy="8" r="5.5" />
-                    </svg>
-                  ) : (
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                    >
-                      <circle cx="8" cy="8" r="5.5" />
-                      <path d="M5.5 8l2 2 3.5-3.5" />
-                    </svg>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  aria-label={article.is_favorite ? "Remove from favourites" : "Add to favourites"}
-                  title={article.is_favorite ? "Remove from favourites" : "Add to favourites"}
-                  className="p-1.5 rounded-md transition-opacity"
-                  style={{
-                    color: article.is_favorite ? "var(--color-accent)" : "var(--color-text-muted)",
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleFavorite(article.id);
-                  }}
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 16 16"
-                    fill={article.is_favorite ? "currentColor" : "none"}
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                  >
-                    <path d="M8 1.5l2.1 4.2 4.7.7-3.4 3.3.8 4.7L8 12l-4.2 2.4.8-4.7L1.2 6.4l4.7-.7z" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          ))
+          <>
+            {articles.map((article, index) => (
+              <ArticleRow
+                key={article.id}
+                article={article}
+                index={index}
+                isSelected={selectedArticleId === article.id}
+                isCursor={index === selectedIndex}
+                onSelect={onSelectArticle}
+                onToggleRead={onToggleRead}
+                onToggleFavorite={onToggleFavorite}
+              />
+            ))}
+            <div ref={sentinelRef} aria-hidden="true" />
+            {loadingMore && (
+              <p className="px-4 py-3 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                Loading more…
+              </p>
+            )}
+          </>
         ) : (
           <div
             className="flex flex-col items-center justify-center h-full text-center px-4"
@@ -271,10 +199,8 @@ export default function ArticleList({
               <line x1="16" y1="13" x2="8" y2="13" />
               <line x1="16" y1="17" x2="8" y2="17" />
             </svg>
-            <p className="text-sm">
-              {feeds && feeds.length > 0 ? "No articles yet" : "Add a feed to get started"}
-            </p>
-            {feeds && feeds.length > 0 && (
+            <p className="text-sm">{hasFeeds ? "No articles yet" : "Add a feed to get started"}</p>
+            {hasFeeds && (
               <p className="text-xs mt-1">
                 Press{" "}
                 <kbd
@@ -292,6 +218,139 @@ export default function ArticleList({
     </div>
   );
 }
+
+export default memo(ArticleList);
+
+interface ArticleRowProps {
+  article: ArticleListItem;
+  index: number;
+  isSelected: boolean;
+  isCursor: boolean;
+  onSelect: (article: ArticleListItem) => void;
+  onToggleRead: (article: ArticleListItem) => void;
+  onToggleFavorite: (article: ArticleListItem) => void;
+}
+
+/**
+ * One list row. Memoized so moving the cursor or toggling a flag re-renders only the rows whose
+ * props changed, not the whole list.
+ */
+const ArticleRow = memo(function ArticleRow({
+  article,
+  index,
+  isSelected,
+  isCursor,
+  onSelect,
+  onToggleRead,
+  onToggleFavorite,
+}: ArticleRowProps) {
+  return (
+    <div
+      data-index={index}
+      role="listitem"
+      aria-current={isSelected ? "true" : undefined}
+      className="flex items-center border-b transition-colors group/article"
+      style={{
+        borderColor: "var(--color-border)",
+        backgroundColor: isSelected || isCursor ? "var(--color-bg-secondary)" : "transparent",
+        borderLeft:
+          isCursor && !isSelected ? "2px solid var(--color-accent)" : "2px solid transparent",
+      }}
+    >
+      <button
+        type="button"
+        className="flex-1 min-w-0 text-left px-4 py-3"
+        onClick={() => onSelect(article)}
+      >
+        <div className="flex items-start gap-2">
+          {!article.is_read && (
+            <span
+              className="w-2 h-2 rounded-full mt-1.5 shrink-0"
+              style={{ backgroundColor: "var(--color-unread-dot)" }}
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <p
+              className="text-sm truncate"
+              style={{
+                color: "var(--color-text-primary)",
+                fontWeight: article.is_read ? 400 : 600,
+              }}
+            >
+              {article.title}
+            </p>
+            <p className="text-xs mt-0.5 truncate" style={{ color: "var(--color-text-muted)" }}>
+              {article.feed_title}
+              {article.published_at && ` · ${formatRelativeTime(article.published_at)}`}
+            </p>
+          </div>
+        </div>
+      </button>
+      <div className="flex items-center shrink-0 mr-1">
+        <button
+          type="button"
+          aria-label={article.is_read ? "Mark as unread" : "Mark as read"}
+          title={article.is_read ? "Mark as unread" : "Mark as read"}
+          className="p-1.5 rounded-md transition-opacity"
+          style={{ color: "var(--color-text-muted)" }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleRead(article);
+          }}
+        >
+          {article.is_read ? (
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
+              <circle cx="8" cy="8" r="5.5" />
+            </svg>
+          ) : (
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
+              <circle cx="8" cy="8" r="5.5" />
+              <path d="M5.5 8l2 2 3.5-3.5" />
+            </svg>
+          )}
+        </button>
+        <button
+          type="button"
+          aria-label={article.is_favorite ? "Remove from favourites" : "Add to favourites"}
+          title={article.is_favorite ? "Remove from favourites" : "Add to favourites"}
+          className="p-1.5 rounded-md transition-opacity"
+          style={{
+            color: article.is_favorite ? "var(--color-accent)" : "var(--color-text-muted)",
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFavorite(article);
+          }}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill={article.is_favorite ? "currentColor" : "none"}
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path d="M8 1.5l2.1 4.2 4.7.7-3.4 3.3.8 4.7L8 12l-4.2 2.4.8-4.7L1.2 6.4l4.7-.7z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+});
 
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);

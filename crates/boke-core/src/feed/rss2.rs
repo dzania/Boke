@@ -179,10 +179,8 @@ fn apply_text(
             "link" => feed.link = text.to_string(),
             "description" => feed.description = Some(text.to_string()),
             "language" => feed.language = Some(text.to_string()),
-            "lastBuildDate" | "pubDate" => {
-                if feed.last_updated.is_none() {
-                    feed.last_updated = parse_date(text);
-                }
+            "lastBuildDate" | "pubDate" if feed.last_updated.is_none() => {
+                feed.last_updated = parse_date(text);
             }
             _ => {}
         }

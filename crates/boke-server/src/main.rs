@@ -63,19 +63,23 @@ async fn main() -> anyhow::Result<()> {
         .route("/feeds", post(routes::feeds::add_feed))
         .route("/feeds/import", post(routes::feeds::import_opml))
         .route("/feeds/{id}", delete(routes::feeds::remove_feed))
+        .route(
+            "/feeds/{id}/folder",
+            delete(routes::folders::remove_feed_from_folder),
+        )
         .route("/feeds/{id}/refresh", post(routes::feeds::refresh_feed))
         .route("/feeds/refresh", post(routes::feeds::refresh_all_feeds))
         // Article routes
         .route("/articles", get(routes::articles::get_articles))
         .route("/articles/{id}", get(routes::articles::get_article))
-        .route("/articles/{id}/read", post(routes::articles::toggle_read))
+        .route("/articles/{id}/read", put(routes::articles::set_read))
         .route(
             "/articles/{id}/favorite",
-            post(routes::articles::toggle_favorite),
+            put(routes::articles::set_favorite),
         )
         .route(
             "/articles/{id}/content",
-            get(routes::articles::fetch_article_content),
+            get(routes::articles::get_article_content),
         )
         .route("/articles/mark-read", post(routes::articles::mark_all_read))
         .route(

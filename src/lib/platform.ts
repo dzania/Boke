@@ -3,12 +3,12 @@
  * Provides fallbacks for Tauri-specific functionality.
  */
 
-// Runtime detection (evaluated at call time, not module load)
-// Tauri v2 uses __TAURI_INTERNALS__, v1 used __TAURI__
+// Tauri v2 injects __TAURI_INTERNALS__ before any app script runs, so this can be evaluated once.
+const IS_TAURI =
+  typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
+
 function checkIsTauri(): boolean {
-  return (
-    typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)
-  );
+  return IS_TAURI;
 }
 
 /**
