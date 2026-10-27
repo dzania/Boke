@@ -1,20 +1,46 @@
-use crate::db::{Database, DbResult, InsertResult};
-use crate::feed::{FeedParser, discovery};
+use crate::db::{Database, DbResult};
+use crate::feed::{FeedParser, ParsedFeed, discovery};
 use crate::models::{FeedWithMeta, NewArticle, NewFeed};
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::task::JoinSet;
+
+use super::read_body_limited;
+
+/// Maximum number of feeds fetched at the same time during "refresh all".
+const REFRESH_CONCURRENCY_MAX: usize = 8;
+
+/// Upper bound on a feed document. Larger responses are rejected rather than buffered.
+const FEED_BYTES_MAX: usize = 16 * 1024 * 1024;
+
+/// Upper bound on entries stored from a single fetch.
+const FEED_ENTRIES_MAX: usize = 1000;
+
+const FEED_FETCH_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub struct FeedService<D: Database> {
     db: Arc<D>,
     http_client: reqwest::Client,
 }
 
+// Not derived: `#[derive(Clone)]` would add a needless `D: Clone` bound on the impl. Both fields
+// are cheap reference-counted handles.
+impl<D: Database> Clone for FeedService<D> {
+    fn clone(&self) -> Self {
+        Self {
+            db: Arc::clone(&self.db),
+            http_client: self.http_client.clone(),
+        }
+    }
+}
+
 impl<D: Database> FeedService<D> {
     pub fn new(db: Arc<D>) -> Self {
         let http_client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(15))
+            .timeout(FEED_FETCH_TIMEOUT)
             .user_agent("Boke RSS Reader")
             .build()
-            .expect("Failed to create HTTP client");
+            .expect("HTTP client config is static and valid");
 
         Self { db, http_client }
     }
@@ -30,12 +56,8 @@ impl<D: Database> FeedService<D> {
             _ => url.to_string(),
         };
 
-        // Fetch and parse feed
-        let response = self.http_client.get(&feed_url).send().await?;
-        let body = response.text().await?;
-        let parsed = FeedParser::parse(&body, &feed_url)?;
+        let parsed = self.fetch_feed(&feed_url).await?;
 
-        // Insert feed into database
         let new_feed = NewFeed {
             title: parsed.title.clone(),
             folder_id: None,
@@ -48,35 +70,18 @@ impl<D: Database> FeedService<D> {
         };
 
         let feed_id = self.db.insert_feed(&new_feed).await?;
+        self.db
+            .insert_articles(&new_articles(feed_id, &parsed))
+            .await?;
 
-        // Insert articles
-        for entry in parsed.items() {
-            let new_article = NewArticle {
-                feed_id,
-                guid: entry.guid().to_string(),
-                title: entry.title.clone(),
-                link: if entry.link.is_empty() {
-                    None
-                } else {
-                    Some(entry.link.clone())
-                },
-                author: entry.author.clone(),
-                summary: entry.summary.clone(),
-                content: entry.content.clone(),
-                image_url: entry.image_url.clone(),
-                published_at: entry.published_at(),
-            };
-            let _ = self.db.insert_article(&new_article).await;
+        // The favicon is cosmetic; a missing one must not fail adding the feed.
+        if let Some(site_url) = parsed.site_url() {
+            match self.fetch_favicon(site_url).await {
+                Ok(favicon) => self.db.update_feed_favicon(feed_id, &favicon).await?,
+                Err(error) => log::info!("No favicon for {site_url}: {error}"),
+            }
         }
 
-        // Fetch favicon in background (best effort)
-        if let Some(site_url) = parsed.site_url()
-            && let Ok(favicon) = self.fetch_favicon(site_url).await
-        {
-            let _ = self.db.update_feed_favicon(feed_id, &favicon).await;
-        }
-
-        // Return the feed with metadata
         let feeds = self.db.get_feeds().await?;
         feeds
             .into_iter()
@@ -95,58 +100,73 @@ impl<D: Database> FeedService<D> {
             .await?
             .ok_or_else(|| anyhow::anyhow!("Feed not found"))?;
 
-        let response = self.http_client.get(&feed_url).send().await?;
-        let body = response.text().await?;
-        let parsed = FeedParser::parse(&body, &feed_url)?;
-
-        let mut new_count = 0;
-        for entry in parsed.items() {
-            let new_article = NewArticle {
-                feed_id,
-                guid: entry.guid().to_string(),
-                title: entry.title.clone(),
-                link: if entry.link.is_empty() {
-                    None
-                } else {
-                    Some(entry.link.clone())
-                },
-                author: entry.author.clone(),
-                summary: entry.summary.clone(),
-                content: entry.content.clone(),
-                image_url: entry.image_url.clone(),
-                published_at: entry.published_at(),
-            };
-            if let InsertResult::Inserted(_) = self.db.insert_article(&new_article).await? {
-                new_count += 1;
-            }
-        }
-
+        let parsed = self.fetch_feed(&feed_url).await?;
+        let new_count = self
+            .db
+            .insert_articles(&new_articles(feed_id, &parsed))
+            .await?;
         self.db.update_feed_last_fetched(feed_id).await?;
 
         Ok(RefreshResult {
             feed_id,
             new_articles: new_count,
+            error: None,
         })
     }
 
+    /// Refreshes every feed, at most [`REFRESH_CONCURRENCY_MAX`] at a time.
+    ///
+    /// A failing feed does not fail the batch; its result carries the error message instead.
+    /// The spawned tasks are owned by a local `JoinSet`, so cancelling this future aborts them.
     pub async fn refresh_all_feeds(&self) -> anyhow::Result<Vec<RefreshResult>> {
         let feeds = self.db.get_feeds().await?;
-        let mut results = Vec::new();
+        let mut results = Vec::with_capacity(feeds.len());
+        let mut pending_ids = feeds.iter().map(|feed| feed.id);
+        let mut tasks = JoinSet::new();
 
-        for feed in feeds {
-            match self.refresh_feed(feed.id).await {
+        for feed_id in pending_ids.by_ref().take(REFRESH_CONCURRENCY_MAX) {
+            self.spawn_refresh(&mut tasks, feed_id);
+        }
+        while let Some(joined) = tasks.join_next().await {
+            match joined {
                 Ok(result) => results.push(result),
-                Err(e) => {
-                    log::warn!("Failed to refresh feed {}: {}", feed.id, e);
-                    results.push(RefreshResult {
-                        feed_id: feed.id,
-                        new_articles: 0,
-                    });
-                }
+                Err(error) => log::error!("Feed refresh task failed: {error}"),
             }
+            if let Some(feed_id) = pending_ids.next() {
+                self.spawn_refresh(&mut tasks, feed_id);
+            }
+            assert!(tasks.len() <= REFRESH_CONCURRENCY_MAX);
         }
 
         Ok(results)
+    }
+
+    fn spawn_refresh(&self, tasks: &mut JoinSet<RefreshResult>, feed_id: i64) {
+        let service = self.clone();
+        tasks.spawn(async move {
+            match service.refresh_feed(feed_id).await {
+                Ok(result) => result,
+                Err(error) => {
+                    log::warn!("Failed to refresh feed {feed_id}: {error}");
+                    RefreshResult {
+                        feed_id,
+                        new_articles: 0,
+                        error: Some(error.to_string()),
+                    }
+                }
+            }
+        });
+    }
+
+    async fn fetch_feed(&self, feed_url: &str) -> anyhow::Result<ParsedFeed> {
+        let response = self
+            .http_client
+            .get(feed_url)
+            .send()
+            .await?
+            .error_for_status()?;
+        let body = read_body_limited(response, FEED_BYTES_MAX).await?;
+        FeedParser::parse(&body, feed_url)
     }
 
     async fn fetch_favicon(&self, site_url: &str) -> anyhow::Result<String> {
@@ -198,5 +218,26 @@ impl<D: Database> FeedService<D> {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RefreshResult {
     pub feed_id: i64,
-    pub new_articles: i64,
+    pub new_articles: u64,
+    /// Why the refresh failed, when it did.
+    pub error: Option<String>,
+}
+
+fn new_articles(feed_id: i64, parsed: &ParsedFeed) -> Vec<NewArticle> {
+    let entries = parsed.items();
+    let mut articles = Vec::with_capacity(entries.len().min(FEED_ENTRIES_MAX));
+    for entry in entries.iter().take(FEED_ENTRIES_MAX) {
+        articles.push(NewArticle {
+            feed_id,
+            guid: entry.guid().to_string(),
+            title: entry.title.clone(),
+            link: (!entry.link.is_empty()).then(|| entry.link.clone()),
+            author: entry.author.clone(),
+            summary: entry.summary.clone(),
+            content: entry.content.clone(),
+            image_url: entry.image_url.clone(),
+            published_at: entry.published_at(),
+        });
+    }
+    articles
 }

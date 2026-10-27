@@ -1,26 +1,35 @@
-import { useState, useCallback, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import type { Article, FeedWithMeta, SidebarItem } from "../types";
+import type { ArticleFilter, ArticleListItem, SidebarItem } from "../types";
 import { findCurrentSidebarIndex } from "../lib/sidebarItems";
 
 export type FocusZone = "sidebar" | "list" | "reader";
 
+/** Moving the cursor within this many rows of the end asks for the next page. */
+const LOAD_MORE_THRESHOLD_ROWS = 5;
+
+/** Maximum delay between the two presses of `gg`. */
+const DOUBLE_G_WINDOW_MS = 500;
+
 interface KeyboardNavConfig {
-  articles: Article[];
-  selectedArticle: Article | null;
-  feeds: FeedWithMeta[];
+  articles: ArticleListItem[];
+  /** List cursor position. Owned by the caller so it can reset it when the list changes. */
+  selectedIndex: number;
+  setSelectedIndex: (index: number) => void;
+  selectedArticle: ArticleListItem | null;
   activeFeedId: number | null;
-  activeFilter: "all" | "unread" | "favourites";
+  activeFilter: ArticleFilter;
   readerRef: React.RefObject<HTMLElement | null>;
+  /** True while a modal (search, add feed) owns the keyboard. */
   disabled: boolean;
   sidebarItems: SidebarItem[];
-  onSelectArticle: (article: Article) => void;
+  onSelectArticle: (article: ArticleListItem) => void;
   onClearArticle: () => void;
-  onSelectFeed: (feedId: number | null) => void;
-  onSelectFilter: (filter: "all" | "unread" | "favourites") => void;
+  onSelectFeed: (feedId: number) => void;
+  onSelectFilter: (filter: ArticleFilter) => void;
   onToggleFolder: (folderId: number) => void;
-  onToggleRead: (articleId: number) => void;
-  onToggleFavorite: (articleId: number) => void;
+  onToggleRead: (article: ArticleListItem) => void;
+  onToggleFavorite: (article: ArticleListItem) => void;
   onOpenInBrowser: (url: string) => void;
   onRefreshFeed: () => void;
   onRefreshAll: () => void;
@@ -28,368 +37,275 @@ interface KeyboardNavConfig {
   onOpenAddFeed: () => void;
   onOpenSearch: () => void;
   onToggleArticleList: () => void;
+  onLoadMore: () => void;
 }
 
-export function useKeyboardNav(config: KeyboardNavConfig) {
-  const {
-    articles,
-    selectedArticle,
-    feeds,
-    activeFeedId,
-    activeFilter,
-    readerRef,
-    disabled,
-    sidebarItems,
-    onSelectArticle,
-    onClearArticle,
-    onSelectFeed,
-    onSelectFilter,
-    onToggleFolder,
-    onToggleRead,
-    onToggleFavorite,
-    onOpenInBrowser,
-    onRefreshFeed,
-    onRefreshAll,
-    onMarkAllRead,
-    onOpenAddFeed,
-    onToggleArticleList,
-  } = config;
+interface NavState {
+  config: KeyboardNavConfig;
+  focusZone: FocusZone;
+  sidebarIndex: number;
+  showShortcuts: boolean;
+}
 
-  const [selectedIndex, setSelectedIndex] = useState(0);
+function clamp(index: number, length: number): number {
+  return Math.max(0, Math.min(index, length - 1));
+}
+
+/**
+ * Vim-style keyboard navigation across sidebar, article list and reader.
+ *
+ * Every handler reads the latest props and state from a ref, so each hotkey is bound once on
+ * mount rather than re-bound whenever the article list or a callback identity changes.
+ */
+export function useKeyboardNav(config: KeyboardNavConfig) {
+  const { setSelectedIndex } = config;
   const [focusZone, setFocusZone] = useState<FocusZone>("list");
   const [sidebarIndex, setSidebarIndex] = useState(0);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const lastGPress = useRef(0);
 
-  const opts = { enabled: !disabled && !showShortcuts, preventDefault: true } as const;
-  const inReader = focusZone === "reader";
-  const inSidebar = focusZone === "sidebar";
+  const latest = useRef<NavState>({ config, focusZone, sidebarIndex, showShortcuts });
+  useLayoutEffect(() => {
+    latest.current = { config, focusZone, sidebarIndex, showShortcuts };
+  });
 
-  // Clamp helpers
-  const clampArticle = useCallback(
-    (i: number) => Math.max(0, Math.min(i, articles.length - 1)),
-    [articles.length]
-  );
-  const clampSidebar = useCallback(
-    (i: number) => Math.max(0, Math.min(i, sidebarItems.length - 1)),
-    [sidebarItems.length]
-  );
+  // Opening an article moves focus to the reader; closing it returns focus to the list.
+  const hasSelection = config.selectedArticle !== null;
+  useEffect(() => {
+    setFocusZone((zone) => {
+      if (hasSelection) return "reader";
+      return zone === "reader" ? "list" : zone;
+    });
+  }, [hasSelection]);
 
-  // Sync focusZone with selectedArticle
-  // When an article is selected, enter reader; when cleared, return to list
-  const prevArticleRef = useRef<Article | null>(null);
-  if (selectedArticle && !prevArticleRef.current) {
-    if (focusZone !== "reader") setFocusZone("reader");
-  } else if (!selectedArticle && prevArticleRef.current) {
-    if (focusZone === "reader") setFocusZone("list");
-  }
-  prevArticleRef.current = selectedArticle;
+  const navEnabled = !config.disabled && !showShortcuts;
+  const opts = { enabled: navEnabled, preventDefault: true } as const;
 
-  // Helper: select sidebar item and return to list
-  const selectSidebarItem = useCallback(
-    (item: SidebarItem) => {
-      if (item.kind === "filter") {
-        onSelectFilter(item.filter);
-      } else if (item.kind === "feed") {
-        onSelectFeed(item.feedId);
-      } else if (item.kind === "folder") {
-        onToggleFolder(item.folderId);
-        return; // stay in sidebar after toggling folder
-      }
-      setFocusZone("list");
-      setSelectedIndex(0);
-    },
-    [onSelectFilter, onSelectFeed, onToggleFolder]
-  );
+  /** The article the m/s/v keys act on: the open one in the reader, else the cursor row. */
+  const targetArticle = (): ArticleListItem | undefined => {
+    const { config, focusZone } = latest.current;
+    if (focusZone === "reader") return config.selectedArticle ?? undefined;
+    return config.articles[config.selectedIndex];
+  };
 
-  // h — move focus to sidebar
+  const moveCursor = (delta: number) => {
+    const { config } = latest.current;
+    const next = clamp(config.selectedIndex + delta, config.articles.length);
+    config.setSelectedIndex(next);
+    if (next >= config.articles.length - LOAD_MORE_THRESHOLD_ROWS) config.onLoadMore();
+  };
+
+  const selectSidebarItem = (item: SidebarItem) => {
+    const { config } = latest.current;
+    if (item.kind === "folder") {
+      // Toggling a folder keeps focus in the sidebar.
+      config.onToggleFolder(item.folderId);
+      return;
+    }
+    if (item.kind === "filter") config.onSelectFilter(item.filter);
+    else config.onSelectFeed(item.feedId);
+    setFocusZone("list");
+    setSelectedIndex(0);
+  };
+
+  const scrollReader = (top: number) => {
+    latest.current.config.readerRef.current?.scrollBy({ top, behavior: "smooth" });
+  };
+
+  // h: move focus to the sidebar
   useHotkeys(
     "h",
     () => {
-      if (inSidebar || inReader) return;
-      const idx = findCurrentSidebarIndex(sidebarItems, activeFeedId, activeFilter);
-      setSidebarIndex(idx);
+      const { config, focusZone } = latest.current;
+      if (focusZone !== "list") return;
+      setSidebarIndex(
+        findCurrentSidebarIndex(config.sidebarItems, config.activeFeedId, config.activeFilter)
+      );
       setFocusZone("sidebar");
     },
-    opts,
-    [inSidebar, inReader, sidebarItems, activeFeedId, activeFilter]
+    opts
   );
 
-  // l — from sidebar, select item and return to list
+  // l, Enter, o: activate the sidebar item, or open the article under the cursor
   useHotkeys(
-    "l",
-    () => {
-      if (!inSidebar) return;
-      const item = sidebarItems[sidebarIndex];
-      if (item) selectSidebarItem(item);
-    },
-    opts,
-    [inSidebar, sidebarItems, sidebarIndex, selectSidebarItem]
-  );
-
-  // j / ArrowDown — context-dependent navigation
-  useHotkeys(
-    "j, ArrowDown",
-    () => {
-      if (inSidebar) {
-        setSidebarIndex((i) => clampSidebar(i + 1));
-      } else if (inReader) {
-        readerRef.current?.scrollBy({ top: 100, behavior: "smooth" });
-      } else {
-        setSelectedIndex((i) => clampArticle(i + 1));
-      }
-    },
-    opts,
-    [clampArticle, clampSidebar, inReader, inSidebar, readerRef]
-  );
-
-  // k / ArrowUp — context-dependent navigation
-  useHotkeys(
-    "k, ArrowUp",
-    () => {
-      if (inSidebar) {
-        setSidebarIndex((i) => clampSidebar(i - 1));
-      } else if (inReader) {
-        readerRef.current?.scrollBy({ top: -100, behavior: "smooth" });
-      } else {
-        setSelectedIndex((i) => clampArticle(i - 1));
-      }
-    },
-    opts,
-    [clampArticle, clampSidebar, inReader, inSidebar, readerRef]
-  );
-
-  // Enter / o — open article or select sidebar item
-  useHotkeys(
-    "enter, o",
-    () => {
-      if (inSidebar) {
-        const item = sidebarItems[sidebarIndex];
+    "l, enter, o",
+    (event) => {
+      const { config, focusZone, sidebarIndex } = latest.current;
+      if (focusZone === "sidebar") {
+        const item = config.sidebarItems[sidebarIndex];
         if (item) selectSidebarItem(item);
         return;
       }
-      if (inReader) return;
-      const article = articles[selectedIndex];
-      if (article) onSelectArticle(article);
+      if (focusZone === "list" && event.key !== "l") {
+        const article = config.articles[config.selectedIndex];
+        if (article) config.onSelectArticle(article);
+      }
     },
-    opts,
-    [
-      articles,
-      selectedIndex,
-      inReader,
-      inSidebar,
-      sidebarItems,
-      sidebarIndex,
-      onSelectArticle,
-      selectSidebarItem,
-    ]
+    opts
   );
 
-  // Escape — close reader, exit sidebar, or close shortcuts
+  useHotkeys(
+    "j, ArrowDown",
+    () => {
+      const { config, focusZone } = latest.current;
+      if (focusZone === "sidebar") {
+        setSidebarIndex((index) => clamp(index + 1, config.sidebarItems.length));
+      } else if (focusZone === "reader") {
+        scrollReader(100);
+      } else {
+        moveCursor(1);
+      }
+    },
+    opts
+  );
+
+  useHotkeys(
+    "k, ArrowUp",
+    () => {
+      const { config, focusZone } = latest.current;
+      if (focusZone === "sidebar") {
+        setSidebarIndex((index) => clamp(index - 1, config.sidebarItems.length));
+      } else if (focusZone === "reader") {
+        scrollReader(-100);
+      } else {
+        moveCursor(-1);
+      }
+    },
+    opts
+  );
+
+  // Escape: close the shortcuts overlay, leave the sidebar, or close the reader
   useHotkeys(
     "escape",
     () => {
+      const { config, focusZone, showShortcuts } = latest.current;
       if (showShortcuts) {
         setShowShortcuts(false);
-      } else if (inSidebar) {
+      } else if (focusZone === "sidebar") {
         setFocusZone("list");
-      } else if (inReader) {
-        onClearArticle();
+      } else if (focusZone === "reader") {
+        config.onClearArticle();
       }
     },
-    { enabled: !disabled, preventDefault: true },
-    [inReader, inSidebar, showShortcuts, onClearArticle]
+    { enabled: !config.disabled, preventDefault: true }
   );
 
-  // J / K — fast scroll reader
-  useHotkeys(
-    "shift+j",
-    () => {
-      readerRef.current?.scrollBy({ top: 200, behavior: "smooth" });
-    },
-    { ...opts, enabled: opts.enabled && inReader },
-    [inReader, readerRef]
-  );
+  const inReader = focusZone === "reader";
+  useHotkeys("shift+j", () => scrollReader(200), { ...opts, enabled: navEnabled && inReader });
+  useHotkeys("shift+k", () => scrollReader(-200), { ...opts, enabled: navEnabled && inReader });
+  useHotkeys("space", () => scrollReader(window.innerHeight * 0.75), {
+    ...opts,
+    enabled: navEnabled && inReader,
+  });
+  useHotkeys("shift+space", () => scrollReader(-window.innerHeight * 0.75), {
+    ...opts,
+    enabled: navEnabled && inReader,
+  });
 
-  useHotkeys(
-    "shift+k",
-    () => {
-      readerRef.current?.scrollBy({ top: -200, behavior: "smooth" });
-    },
-    { ...opts, enabled: opts.enabled && inReader },
-    [inReader, readerRef]
-  );
-
-  // Space — page down in reader
-  useHotkeys(
-    "space",
-    () => {
-      if (!inReader) return;
-      readerRef.current?.scrollBy({ top: window.innerHeight * 0.75, behavior: "smooth" });
-    },
-    opts,
-    [inReader, readerRef]
-  );
-
-  // Shift+Space — page up in reader
-  useHotkeys(
-    "shift+space",
-    () => {
-      if (!inReader) return;
-      readerRef.current?.scrollBy({ top: -window.innerHeight * 0.75, behavior: "smooth" });
-    },
-    opts,
-    [inReader, readerRef]
-  );
-
-  // g — handle gg sequence
+  // gg: jump to the top
   useHotkeys(
     "g",
     () => {
-      if (inReader) return;
+      const { focusZone } = latest.current;
+      if (focusZone === "reader") return;
       const now = Date.now();
-      if (now - lastGPress.current < 500) {
-        if (inSidebar) {
-          setSidebarIndex(0);
-        } else {
-          setSelectedIndex(0);
-        }
+      if (now - lastGPress.current < DOUBLE_G_WINDOW_MS) {
+        if (focusZone === "sidebar") setSidebarIndex(0);
+        else setSelectedIndex(0);
         lastGPress.current = 0;
       } else {
         lastGPress.current = now;
       }
     },
-    opts,
-    [inReader, inSidebar]
+    opts
   );
 
-  // G — jump to bottom
+  // G: jump to the bottom
   useHotkeys(
     "shift+g",
     () => {
-      if (inReader) return;
-      if (inSidebar) {
-        setSidebarIndex(Math.max(0, sidebarItems.length - 1));
-      } else {
-        setSelectedIndex(Math.max(0, articles.length - 1));
+      const { config, focusZone } = latest.current;
+      if (focusZone === "sidebar") {
+        setSidebarIndex(Math.max(0, config.sidebarItems.length - 1));
+      } else if (focusZone === "list") {
+        setSelectedIndex(Math.max(0, config.articles.length - 1));
+        config.onLoadMore();
       }
     },
-    opts,
-    [articles.length, sidebarItems.length, inReader, inSidebar]
+    opts
   );
 
-  // m — toggle read
   useHotkeys(
     "m",
     () => {
-      const article = inReader ? selectedArticle : articles[selectedIndex];
-      if (article) onToggleRead(article.id);
+      const article = targetArticle();
+      if (article) latest.current.config.onToggleRead(article);
     },
-    opts,
-    [articles, selectedIndex, selectedArticle, inReader, onToggleRead]
+    opts
   );
 
-  // s — toggle favorite
   useHotkeys(
     "s",
     () => {
-      const article = inReader ? selectedArticle : articles[selectedIndex];
-      if (article) onToggleFavorite(article.id);
+      const article = targetArticle();
+      if (article) latest.current.config.onToggleFavorite(article);
     },
-    opts,
-    [articles, selectedIndex, selectedArticle, inReader, onToggleFavorite]
+    opts
   );
 
-  // v — open in browser
   useHotkeys(
     "v",
     () => {
-      const article = inReader ? selectedArticle : articles[selectedIndex];
-      if (article?.link) onOpenInBrowser(article.link);
+      const article = targetArticle();
+      if (article?.link) latest.current.config.onOpenInBrowser(article.link);
     },
-    opts,
-    [articles, selectedIndex, selectedArticle, inReader, onOpenInBrowser]
+    opts
   );
 
-  // r — refresh current feed
-  useHotkeys(
-    "r",
-    () => {
-      onRefreshFeed();
-    },
-    opts,
-    [onRefreshFeed]
-  );
+  useHotkeys("r", () => latest.current.config.onRefreshFeed(), opts);
+  useHotkeys("shift+r", () => latest.current.config.onRefreshAll(), opts);
+  useHotkeys("shift+a", () => latest.current.config.onMarkAllRead(), opts);
+  useHotkeys("b", () => latest.current.config.onToggleArticleList(), opts);
 
-  // R — refresh all feeds
-  useHotkeys(
-    "shift+r",
-    () => {
-      onRefreshAll();
-    },
-    opts,
-    [onRefreshAll]
-  );
-
-  // Shift+A — mark all read
-  useHotkeys(
-    "shift+a",
-    () => {
-      onMarkAllRead();
-    },
-    opts,
-    [onMarkAllRead]
-  );
-
-  // a — open add feed dialog
   useHotkeys(
     "a",
     () => {
-      if (inReader) return;
-      onOpenAddFeed();
+      if (latest.current.focusZone !== "reader") latest.current.config.onOpenAddFeed();
     },
-    opts,
-    [inReader, onOpenAddFeed]
+    opts
   );
 
-  // b — toggle article list panel
-  useHotkeys(
-    "b",
-    () => {
-      onToggleArticleList();
-    },
-    opts,
-    [onToggleArticleList]
-  );
+  // "/" and Cmd/Ctrl+K open search
+  useHotkeys("slash, mod+k", () => latest.current.config.onOpenSearch(), opts);
 
-  // ? — toggle shortcuts overlay
-  useHotkeys(
-    "shift+/",
-    () => {
-      setShowShortcuts((v) => !v);
-    },
-    { enabled: !disabled, preventDefault: true },
-    []
-  );
+  // ?: toggle the shortcuts overlay
+  useHotkeys("shift+slash", () => setShowShortcuts((visible) => !visible), {
+    enabled: !config.disabled,
+    preventDefault: true,
+  });
 
-  // 1-9 — switch to nth feed
+  // 1-9: jump to the nth feed in sidebar order
   useHotkeys(
     "1,2,3,4,5,6,7,8,9",
-    (e) => {
-      const n = parseInt(e.key, 10) - 1;
-      if (feeds[n]) {
-        onSelectFeed(feeds[n].id);
-        setSelectedIndex(0);
-        if (inSidebar) setFocusZone("list");
+    (event) => {
+      const { config } = latest.current;
+      const position = Number.parseInt(event.key, 10) - 1;
+      let seen = 0;
+      for (const item of config.sidebarItems) {
+        if (item.kind !== "feed") continue;
+        if (seen === position) {
+          config.onSelectFeed(item.feedId);
+          setSelectedIndex(0);
+          setFocusZone("list");
+          return;
+        }
+        seen += 1;
       }
     },
-    opts,
-    [feeds, onSelectFeed, inSidebar]
+    opts
   );
 
   return {
-    selectedIndex,
-    setSelectedIndex,
     focusZone,
     sidebarIndex,
     showShortcuts,

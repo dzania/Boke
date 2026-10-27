@@ -2,8 +2,11 @@ use async_trait::async_trait;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Postgres, QueryBuilder};
 
-use super::{Database, DbResult, InsertResult};
-use crate::models::{Article, ArticleQuery, Feed, FeedWithMeta, Folder, NewArticle, NewFeed};
+use super::{Database, DbResult};
+use crate::models::{
+    Article, ArticleListItem, ArticleQuery, ArticleScope, Feed, FeedWithMeta, Folder, NewArticle,
+    NewFeed,
+};
 
 #[derive(Clone)]
 pub struct PostgresDatabase {
@@ -72,6 +75,7 @@ CREATE INDEX IF NOT EXISTS idx_articles_feed_id ON articles(feed_id);
 CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(published_at DESC NULLS LAST);
 CREATE INDEX IF NOT EXISTS idx_articles_unread ON articles(feed_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_articles_favorite ON articles(is_favorite) WHERE is_favorite = TRUE;
+CREATE INDEX IF NOT EXISTS idx_articles_feed_published ON articles(feed_id, published_at DESC NULLS LAST);
 
 -- Full-text search: create search_vector column if not exists
 DO $$
@@ -98,7 +102,7 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS articles_search_vector_trigger ON articles;
 CREATE TRIGGER articles_search_vector_trigger
-    BEFORE INSERT OR UPDATE ON articles
+    BEFORE INSERT OR UPDATE OF title, content ON articles
     FOR EACH ROW
     EXECUTE FUNCTION articles_search_vector_update();
 
@@ -198,31 +202,33 @@ impl Database for PostgresDatabase {
         Ok(result)
     }
 
-    async fn insert_article(&self, article: &NewArticle) -> DbResult<InsertResult> {
-        let result = sqlx::query_scalar::<_, Option<i64>>(
-            r#"
-            INSERT INTO articles (feed_id, guid, title, link, author, summary, content, image_url, published_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            ON CONFLICT (feed_id, guid) DO NOTHING
-            RETURNING id
-            "#,
-        )
-        .bind(article.feed_id)
-        .bind(&article.guid)
-        .bind(&article.title)
-        .bind(&article.link)
-        .bind(&article.author)
-        .bind(&article.summary)
-        .bind(&article.content)
-        .bind(&article.image_url)
-        .bind(article.published_at)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        match result {
-            Some(Some(id)) => Ok(InsertResult::Inserted(id)),
-            _ => Ok(InsertResult::Ignored),
+    async fn insert_articles(&self, articles: &[NewArticle]) -> DbResult<u64> {
+        let mut tx = self.pool.begin().await?;
+        let mut inserted_count: u64 = 0;
+        for article in articles {
+            let result = sqlx::query(
+                r#"
+                INSERT INTO articles (feed_id, guid, title, link, author, summary, content, image_url, published_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                ON CONFLICT (feed_id, guid) DO NOTHING
+                "#,
+            )
+            .bind(article.feed_id)
+            .bind(&article.guid)
+            .bind(&article.title)
+            .bind(&article.link)
+            .bind(&article.author)
+            .bind(&article.summary)
+            .bind(&article.content)
+            .bind(&article.image_url)
+            .bind(article.published_at)
+            .execute(&mut *tx)
+            .await?;
+            inserted_count += result.rows_affected();
         }
+        tx.commit().await?;
+        assert!(inserted_count <= articles.len() as u64);
+        Ok(inserted_count)
     }
 
     async fn get_article(&self, id: i64) -> DbResult<Option<Article>> {
@@ -231,7 +237,8 @@ impl Database for PostgresDatabase {
             SELECT
                 a.id, a.feed_id, a.guid, a.title, a.link, a.author, a.summary, a.content,
                 a.image_url, a.published_at, a.is_read, a.is_favorite, a.created_at,
-                f.title as feed_title, f.favicon_url as feed_favicon_url
+                f.title as feed_title, f.favicon_url as feed_favicon_url,
+                f.site_url as feed_site_url
             FROM articles a
             JOIN feeds f ON a.feed_id = f.id
             WHERE a.id = $1
@@ -244,13 +251,14 @@ impl Database for PostgresDatabase {
         Ok(article.map(|a| a.into()))
     }
 
-    async fn get_articles(&self, query: &ArticleQuery) -> DbResult<Vec<Article>> {
+    async fn get_articles(&self, query: &ArticleQuery) -> DbResult<Vec<ArticleListItem>> {
         let mut qb: QueryBuilder<Postgres> = QueryBuilder::new(
             r#"
             SELECT
-                a.id, a.feed_id, a.guid, a.title, a.link, a.author, a.summary, a.content,
+                a.id, a.feed_id, a.title, a.link, a.author,
                 a.image_url, a.published_at, a.is_read, a.is_favorite, a.created_at,
-                f.title as feed_title, f.favicon_url as feed_favicon_url
+                f.title as feed_title, f.favicon_url as feed_favicon_url,
+                f.site_url as feed_site_url
             FROM articles a
             JOIN feeds f ON a.feed_id = f.id
             WHERE 1=1
@@ -270,62 +278,49 @@ impl Database for PostgresDatabase {
             qb.push(" AND a.is_favorite = TRUE");
         }
 
-        qb.push(" ORDER BY a.published_at DESC NULLS LAST, a.created_at DESC");
+        // `a.id` makes the order total, so offset pages never overlap or skip rows on ties.
+        qb.push(" ORDER BY a.published_at DESC NULLS LAST, a.created_at DESC, a.id DESC");
         qb.push(" LIMIT ");
         qb.push_bind(query.limit);
         qb.push(" OFFSET ");
         qb.push_bind(query.offset);
 
         let articles = qb
-            .build_query_as::<ArticleRow>()
+            .build_query_as::<ArticleListRow>()
             .fetch_all(&self.pool)
             .await?;
 
         Ok(articles.into_iter().map(|a| a.into()).collect())
     }
 
-    async fn toggle_read(&self, id: i64) -> DbResult<()> {
-        sqlx::query("UPDATE articles SET is_read = NOT is_read WHERE id = $1")
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
+    async fn set_read(&self, id: i64, is_read: bool) -> DbResult<()> {
+        sqlx::query(
+            "UPDATE articles SET is_read = $1 WHERE id = $2 AND is_read IS DISTINCT FROM $1",
+        )
+        .bind(is_read)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
-    async fn mark_all_read(&self, feed_id: Option<i64>) -> DbResult<()> {
-        if let Some(fid) = feed_id {
-            sqlx::query("UPDATE articles SET is_read = TRUE WHERE feed_id = $1")
-                .bind(fid)
-                .execute(&self.pool)
-                .await?;
-        } else {
-            sqlx::query("UPDATE articles SET is_read = TRUE")
-                .execute(&self.pool)
-                .await?;
-        }
+    async fn set_favorite(&self, id: i64, is_favorite: bool) -> DbResult<()> {
+        sqlx::query(
+            "UPDATE articles SET is_favorite = $1 WHERE id = $2 AND is_favorite IS DISTINCT FROM $1",
+        )
+        .bind(is_favorite)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
-    async fn mark_all_unread(&self, feed_id: Option<i64>) -> DbResult<()> {
-        if let Some(fid) = feed_id {
-            sqlx::query("UPDATE articles SET is_read = FALSE WHERE feed_id = $1")
-                .bind(fid)
-                .execute(&self.pool)
-                .await?;
-        } else {
-            sqlx::query("UPDATE articles SET is_read = FALSE")
-                .execute(&self.pool)
-                .await?;
-        }
-        Ok(())
+    async fn mark_all_read(&self, scope: ArticleScope) -> DbResult<()> {
+        set_read_in_scope(&self.pool, scope, true).await
     }
 
-    async fn toggle_favorite(&self, id: i64) -> DbResult<()> {
-        sqlx::query("UPDATE articles SET is_favorite = NOT is_favorite WHERE id = $1")
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
+    async fn mark_all_unread(&self, scope: ArticleScope) -> DbResult<()> {
+        set_read_in_scope(&self.pool, scope, false).await
     }
 
     async fn get_favorites_count(&self) -> DbResult<i64> {
@@ -336,13 +331,14 @@ impl Database for PostgresDatabase {
         Ok(count)
     }
 
-    async fn search_articles(&self, query: &str, limit: i64) -> DbResult<Vec<Article>> {
-        let articles = sqlx::query_as::<_, ArticleRow>(
+    async fn search_articles(&self, query: &str, limit: i64) -> DbResult<Vec<ArticleListItem>> {
+        let articles = sqlx::query_as::<_, ArticleListRow>(
             r#"
             SELECT
-                a.id, a.feed_id, a.guid, a.title, a.link, a.author, a.summary, a.content,
+                a.id, a.feed_id, a.title, a.link, a.author,
                 a.image_url, a.published_at, a.is_read, a.is_favorite, a.created_at,
-                f.title as feed_title, f.favicon_url as feed_favicon_url
+                f.title as feed_title, f.favicon_url as feed_favicon_url,
+                f.site_url as feed_site_url
             FROM articles a
             JOIN feeds f ON a.feed_id = f.id
             WHERE a.search_vector @@ plainto_tsquery('english', $1)
@@ -365,14 +361,6 @@ impl Database for PostgresDatabase {
             .execute(&self.pool)
             .await?;
         Ok(())
-    }
-
-    async fn get_article_link(&self, id: i64) -> DbResult<Option<String>> {
-        let result = sqlx::query_scalar::<_, String>("SELECT link FROM articles WHERE id = $1")
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await?;
-        Ok(result)
     }
 
     async fn get_folders(&self) -> DbResult<Vec<Folder>> {
@@ -439,6 +427,24 @@ impl Database for PostgresDatabase {
         .await?;
         Ok(())
     }
+}
+
+/// Sets `is_read` on every article in `scope` whose flag differs. The guard keeps the write set
+/// to rows that actually change.
+async fn set_read_in_scope(pool: &PgPool, scope: ArticleScope, is_read: bool) -> DbResult<()> {
+    let mut qb: QueryBuilder<Postgres> = QueryBuilder::new("UPDATE articles SET is_read = ");
+    qb.push_bind(is_read);
+    qb.push(" WHERE is_read IS DISTINCT FROM ");
+    qb.push_bind(is_read);
+    if let Some(feed_id) = scope.feed_id {
+        qb.push(" AND feed_id = ");
+        qb.push_bind(feed_id);
+    }
+    if scope.favorites_only {
+        qb.push(" AND is_favorite = TRUE");
+    }
+    qb.build().execute(pool).await?;
+    Ok(())
 }
 
 // Row types for SQLx
@@ -531,6 +537,7 @@ struct ArticleRow {
     created_at: Option<chrono::DateTime<chrono::Utc>>,
     feed_title: Option<String>,
     feed_favicon_url: Option<String>,
+    feed_site_url: Option<String>,
 }
 
 impl From<ArticleRow> for Article {
@@ -551,6 +558,44 @@ impl From<ArticleRow> for Article {
             created_at: row.created_at,
             feed_title: row.feed_title,
             feed_favicon_url: row.feed_favicon_url,
+            feed_site_url: row.feed_site_url,
+        }
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct ArticleListRow {
+    id: i64,
+    feed_id: i64,
+    title: String,
+    link: Option<String>,
+    author: Option<String>,
+    image_url: Option<String>,
+    published_at: Option<chrono::DateTime<chrono::Utc>>,
+    is_read: bool,
+    is_favorite: bool,
+    created_at: Option<chrono::DateTime<chrono::Utc>>,
+    feed_title: Option<String>,
+    feed_favicon_url: Option<String>,
+    feed_site_url: Option<String>,
+}
+
+impl From<ArticleListRow> for ArticleListItem {
+    fn from(row: ArticleListRow) -> Self {
+        ArticleListItem {
+            id: row.id,
+            feed_id: row.feed_id,
+            title: row.title,
+            link: row.link,
+            author: row.author,
+            image_url: row.image_url,
+            published_at: row.published_at,
+            is_read: row.is_read,
+            is_favorite: row.is_favorite,
+            created_at: row.created_at,
+            feed_title: row.feed_title,
+            feed_favicon_url: row.feed_favicon_url,
+            feed_site_url: row.feed_site_url,
         }
     }
 }

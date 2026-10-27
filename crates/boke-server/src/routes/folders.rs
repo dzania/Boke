@@ -59,3 +59,14 @@ pub async fn move_feed_to_folder(
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+pub async fn remove_feed_from_folder(
+    State(state): State<AppState>,
+    Path(feed_id): Path<i64>,
+) -> Result<StatusCode, ApiError> {
+    state
+        .folder_service
+        .move_feed_to_folder(feed_id, None)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}

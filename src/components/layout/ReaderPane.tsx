@@ -1,54 +1,32 @@
-import { useState, useEffect } from "react";
+import { memo, useEffect } from "react";
 import { openUrl } from "../../lib/platform";
 import ArticleContent from "../article/ArticleContent";
 import { ReaderSkeleton } from "../ui/Skeleton";
-import { fetchArticleContent } from "../../lib/api";
-import type { Article } from "../../types";
-
-const CONTENT_SHORT_THRESHOLD = 800;
+import { useArticleContent } from "../../api/articles";
+import type { ArticleListItem } from "../../types";
 
 interface ReaderPaneProps {
-  article: Article | null;
+  article: ArticleListItem | null;
   readerRef: React.RefObject<HTMLElement | null>;
-  onToggleFavorite: (articleId: number) => void;
-  onToggleRead: (articleId: number) => void;
+  onToggleFavorite: (article: ArticleListItem) => void;
+  onToggleRead: (article: ArticleListItem) => void;
   theme: "light" | "dark";
 }
 
-export default function ReaderPane({
+function ReaderPane({
   article,
   readerRef,
   onToggleFavorite,
   onToggleRead,
   theme,
 }: ReaderPaneProps) {
-  const [fullContent, setFullContent] = useState<string | null>(null);
-  const [fetching, setFetching] = useState(false);
+  const articleId = article?.id ?? null;
+  const contentQuery = useArticleContent(articleId);
 
+  // A newly opened article starts at the top, not at the previous article's scroll offset.
   useEffect(() => {
-    setFullContent(null);
-    setFetching(false);
-
-    if (!article) return;
-
-    const existing = article.content || article.summary || "";
-    // Strip HTML tags for length check
-    const textLen = existing.replace(/<[^>]*>/g, "").length;
-
-    if (textLen < CONTENT_SHORT_THRESHOLD && article.link) {
-      setFetching(true);
-      fetchArticleContent(article.id)
-        .then((content) => {
-          // Only use fetched content if it's substantially longer
-          const fetchedTextLen = content.replace(/<[^>]*>/g, "").length;
-          if (fetchedTextLen > textLen) {
-            setFullContent(content);
-          }
-        })
-        .catch(() => {})
-        .finally(() => setFetching(false));
-    }
-  }, [article?.id]);
+    readerRef.current?.scrollTo({ top: 0 });
+  }, [articleId, readerRef]);
 
   if (!article) {
     return (
@@ -103,8 +81,6 @@ export default function ReaderPane({
     );
   }
 
-  const displayContent = fullContent || article.content || article.summary || "";
-
   return (
     <main
       ref={readerRef}
@@ -124,7 +100,7 @@ export default function ReaderPane({
               className="p-1.5 rounded-md hover:opacity-80 transition-opacity"
               style={{ color: "var(--color-text-secondary)" }}
               title={article.is_read ? "Mark as unread" : "Mark as read"}
-              onClick={() => onToggleRead(article.id)}
+              onClick={() => onToggleRead(article)}
             >
               {article.is_read ? (
                 <svg
@@ -159,7 +135,7 @@ export default function ReaderPane({
                 color: article.is_favorite ? "var(--color-accent)" : "var(--color-text-secondary)",
               }}
               title={article.is_favorite ? "Remove from favourites" : "Add to favourites"}
-              onClick={() => onToggleFavorite(article.id)}
+              onClick={() => onToggleFavorite(article)}
             >
               <svg
                 width="16"
@@ -179,7 +155,13 @@ export default function ReaderPane({
                 className="p-1.5 rounded-md hover:opacity-80 transition-opacity"
                 style={{ color: "var(--color-text-secondary)" }}
                 title="Open in browser"
-                onClick={() => openUrl(article.link!)}
+                onClick={() => {
+                  if (article.link) {
+                    openUrl(article.link).catch((error: unknown) =>
+                      console.error("Failed to open article", error)
+                    );
+                  }
+                }}
               >
                 <svg
                   width="16"
@@ -203,12 +185,23 @@ export default function ReaderPane({
           )}
           {article.feed_title && <span> · {article.feed_title}</span>}
         </p>
-        {fetching && !fullContent ? (
+        {contentQuery.isPending ? (
           <ReaderSkeleton />
+        ) : contentQuery.isError ? (
+          <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+            Could not load this article: {String(contentQuery.error)}
+          </p>
         ) : (
-          <ArticleContent content={displayContent} theme={theme} />
+          <ArticleContent
+            content={contentQuery.data}
+            articleUrl={article.link}
+            siteUrl={article.feed_site_url}
+            theme={theme}
+          />
         )}
       </article>
     </main>
   );
 }
+
+export default memo(ReaderPane);
